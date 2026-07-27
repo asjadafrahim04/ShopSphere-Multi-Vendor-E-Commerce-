@@ -7,12 +7,18 @@
         <p class="page-subtitle">{{ cartItems.length }} items in your cart</p>
       </div>
 
+      <!-- Loading State -->
+      <div v-if="loading" class="loading-state">
+        <div class="spinner"></div>
+        <p>Loading your cart...</p>
+      </div>
+
       <!-- Cart Content -->
-      <div v-if="cartItems.length > 0" class="cart-content">
+      <div v-else-if="cartItems.length > 0" class="cart-content">
         <!-- Cart Items -->
         <div class="cart-items">
           <div v-for="item in cartItems" :key="item.id" class="cart-item">
-            <div class="item-image" :style="{ background: item.imageBg || '#e8ecf1' }">
+            <div class="item-image" :style="{ background: '#e8ecf1' }">
               <img 
                 v-if="item.image" 
                 :src="item.image" 
@@ -26,7 +32,7 @@
             
             <div class="item-details">
               <h4>{{ item.name }}</h4>
-              <p class="item-vendor">{{ item.vendor }}</p>
+              <p class="item-vendor">{{ item.vendor || 'ShopSphere' }}</p>
               <div class="item-price">
                 <span class="current-price">${{ item.price }}</span>
                 <span v-if="item.originalPrice" class="original-price">${{ item.originalPrice }}</span>
@@ -72,7 +78,7 @@
             <span>Total</span>
             <span>${{ total.toFixed(2) }}</span>
           </div>
-          <button class="btn-primary-modern checkout-btn" @click="goToCheckout">
+          <button class="btn-primary-modern checkout-btn" @click="goToCheckout" :disabled="loading">
             <i class="bi bi-credit-card me-2"></i>Proceed to Checkout
           </button>
           <button class="btn-outline-modern continue-btn" @click="continueShopping">
@@ -97,13 +103,16 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { cartApi } from '@/services/api'
 
 const router = useRouter()
 
-// ===== CART STATE =====
+// ===== STATE =====
 const cartItems = ref([])
+const loading = ref(true)
+const error = ref(null)
 
 // ===== COMPUTED =====
 const subtotal = computed(() => {
@@ -115,7 +124,7 @@ const shipping = computed(() => {
 })
 
 const tax = computed(() => {
-  return subtotal.value * 0.08 // 8% tax
+  return subtotal.value * 0.08
 })
 
 const total = computed(() => {
@@ -123,73 +132,107 @@ const total = computed(() => {
 })
 
 // ===== METHODS =====
-const loadCart = () => {
-  // Load from localStorage
-  const savedCart = localStorage.getItem('shopsphere_cart')
-  if (savedCart) {
-    cartItems.value = JSON.parse(savedCart)
-  } else {
-    // Add some demo items if cart is empty
-    cartItems.value = [
-      {
-        id: 1,
-        name: 'Wireless Noise-Cancelling Headphones',
-        vendor: 'TechShop',
-        price: 49.99,
-        originalPrice: 79.99,
-        image: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?q=80&w=870&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D',
-        emoji: '🎧',
-        imageBg: '#e8ecf1',
-        quantity: 1
-      },
-      {
-        id: 3,
-        name: 'Smart Coffee Maker Pro',
-        vendor: 'HomeGoods',
-        price: 129.99,
-        originalPrice: 159.99,
-        image: 'https://images.unsplash.com/photo-1517668808822-9f02a4bcc53a?q=80&w=870&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D',
-        emoji: '☕',
-        imageBg: '#f0e8e0',
-        quantity: 2
-      }
-    ]
-    saveCart()
+const loadCart = async () => {
+  loading.value = true
+  error.value = null
+  
+  try {
+    const response = await cartApi.getCart()
+    
+    if (response.data.success) {
+      const cartData = response.data.data
+      cartItems.value = cartData.items.map(item => ({
+        id: item.id,
+        product_id: item.product_id,
+        name: item.name,
+        price: item.price,
+        quantity: item.quantity,
+        image: item.image || null,
+        vendor: item.vendor || 'ShopSphere',
+        total: item.total
+      }))
+      
+      // Update cart count in navbar
+      window.dispatchEvent(new CustomEvent('cart-updated', { 
+        detail: { count: cartData.count } 
+      }))
+    }
+  } catch (err) {
+    console.error('Error loading cart:', err)
+    error.value = 'Failed to load cart. Please try again.'
+    if (err.response?.status === 401) {
+      // Unauthorized - redirect to login
+      router.push('/login')
+    }
+  } finally {
+    loading.value = false
   }
 }
 
-const saveCart = () => {
-  localStorage.setItem('shopsphere_cart', JSON.stringify(cartItems.value))
-}
-
-const updateQuantity = (productId, change) => {
-  const item = cartItems.value.find(i => i.id === productId)
-  if (item) {
-    const newQuantity = item.quantity + change
-    if (newQuantity >= 1) {
-      item.quantity = newQuantity
-      saveCart()
-      // Update badge
-      window.dispatchEvent(new Event('storage'))
+const addToCart = async (productId, quantity = 1) => {
+  try {
+    const response = await cartApi.addToCart(productId, quantity)
+    if (response.data.success) {
+      await loadCart() // Reload cart
       window.dispatchEvent(new CustomEvent('cart-updated'))
     }
+  } catch (err) {
+    console.error('Error adding to cart:', err)
+    alert(err.response?.data?.message || 'Failed to add item to cart')
   }
 }
 
-const removeItem = (productId) => {
-  if (confirm('Remove this item from cart?')) {
-    cartItems.value = cartItems.value.filter(i => i.id !== productId)
-    saveCart()
-    // Update badge
-    window.dispatchEvent(new Event('storage'))
-    window.dispatchEvent(new CustomEvent('cart-updated'))
+const updateQuantity = async (itemId, change) => {
+  const item = cartItems.value.find(i => i.id === itemId)
+  if (!item) return
+  
+  const newQuantity = item.quantity + change
+  if (newQuantity < 1) return
+  
+  try {
+    const response = await cartApi.updateCartItem(itemId, newQuantity)
+    if (response.data.success) {
+      await loadCart()
+      window.dispatchEvent(new CustomEvent('cart-updated'))
+    }
+  } catch (err) {
+    console.error('Error updating quantity:', err)
+    alert(err.response?.data?.message || 'Failed to update cart')
   }
 }
 
-// ===== HANDLE IMAGE ERROR =====
+const removeItem = async (itemId) => {
+  if (!confirm('Remove this item from cart?')) return
+  
+  try {
+    const response = await cartApi.removeCartItem(itemId)
+    if (response.data.success) {
+      await loadCart()
+      window.dispatchEvent(new CustomEvent('cart-updated'))
+    }
+  } catch (err) {
+    console.error('Error removing item:', err)
+    alert('Failed to remove item from cart')
+  }
+}
+
+const clearCart = async () => {
+  if (!confirm('Clear all items from cart?')) return
+  
+  try {
+    const response = await cartApi.clearCart()
+    if (response.data.success) {
+      cartItems.value = []
+      window.dispatchEvent(new CustomEvent('cart-updated'))
+    }
+  } catch (err) {
+    console.error('Error clearing cart:', err)
+    alert('Failed to clear cart')
+  }
+}
+
 const handleImageError = (e) => {
   e.target.style.display = 'none'
-  // Show fallback emoji
   const parent = e.target.parentElement
   const fallback = document.createElement('span')
   fallback.textContent = '📦'
@@ -197,7 +240,6 @@ const handleImageError = (e) => {
   parent.appendChild(fallback)
 }
 
-// ===== NAVIGATION METHODS =====
 const goToCheckout = () => {
   router.push('/checkout')
 }
@@ -219,7 +261,6 @@ onMounted(() => {
   min-height: 100vh;
 }
 
-/* ===== PAGE HEADER ===== */
 .page-header {
   margin-bottom: 40px;
 }
@@ -236,14 +277,35 @@ onMounted(() => {
   font-size: 1.1rem;
 }
 
-/* ===== CART CONTENT ===== */
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+  gap: 20px;
+}
+
+.spinner {
+  width: 48px;
+  height: 48px;
+  border: 4px solid var(--border-color);
+  border-top: 4px solid #667eea;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
 .cart-content {
   display: grid;
   grid-template-columns: 2fr 1fr;
   gap: 40px;
 }
 
-/* ===== CART ITEMS ===== */
 .cart-items {
   display: flex;
   flex-direction: column;
@@ -383,7 +445,6 @@ onMounted(() => {
   color: #dc2626;
 }
 
-/* ===== CART SUMMARY ===== */
 .cart-summary {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
@@ -431,7 +492,6 @@ onMounted(() => {
   margin-top: 10px;
 }
 
-/* ===== EMPTY CART ===== */
 .empty-cart {
   display: flex;
   justify-content: center;
@@ -458,7 +518,6 @@ onMounted(() => {
   font-size: 1.05rem;
 }
 
-/* ===== RESPONSIVE ===== */
 @media (max-width: 1024px) {
   .cart-content {
     grid-template-columns: 1fr;

@@ -51,6 +51,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { cartApi } from '@/services/api'
 
 const props = defineProps({
   product: {
@@ -75,6 +76,7 @@ const props = defineProps({
 
 const isWishlisted = ref(false)
 const imageError = ref(false)
+const isAddingToCart = ref(false)
 
 // ===== CHECK IF PRODUCT IS IN WISHLIST =====
 const checkWishlistStatus = () => {
@@ -108,29 +110,85 @@ const toggleWishlist = () => {
   emit('wishlist-toggle', { productId: props.product.id, isWishlisted: isWishlisted.value })
 }
 
-// ===== ADD TO CART =====
-const addToCart = () => {
-  let cart = JSON.parse(localStorage.getItem('shopsphere_cart') || '[]')
-  const existingItem = cart.find(item => item.id === props.product.id)
+// ===== ADD TO CART (API Integration) =====
+const addToCart = async () => {
+  // Prevent multiple clicks
+  if (isAddingToCart.value) return
   
-  if (existingItem) {
-    existingItem.quantity += 1
-  } else {
-    // Store the FULL product data including image
-    cart.push({
-      ...props.product,
-      quantity: 1,
-      image: props.product.image || null
-    })
+  isAddingToCart.value = true
+
+  try {
+    // Check if user is logged in
+    const token = localStorage.getItem('token')
+    
+    if (token) {
+      // Logged in - use API
+      const response = await cartApi.addToCart(props.product.id, 1)
+      
+      if (response.data.success) {
+        // Update cart count in navbar
+        window.dispatchEvent(new CustomEvent('cart-updated', { 
+          detail: { count: response.data.data.cart_count } 
+        }))
+        
+        // Show success message
+        alert(`🛒 Added "${props.product.name}" to cart!`)
+        
+        // Emit event to parent
+        emit('add-to-cart', props.product)
+      }
+    } else {
+      // Not logged in - use localStorage (fallback)
+      let cart = JSON.parse(localStorage.getItem('shopsphere_cart') || '[]')
+      const existingItem = cart.find(item => item.id === props.product.id)
+      
+      if (existingItem) {
+        existingItem.quantity += 1
+      } else {
+        cart.push({
+          ...props.product,
+          quantity: 1,
+          image: props.product.image || null
+        })
+      }
+      
+      localStorage.setItem('shopsphere_cart', JSON.stringify(cart))
+      
+      // Update badge
+      window.dispatchEvent(new Event('storage'))
+      window.dispatchEvent(new CustomEvent('cart-updated'))
+      
+      const message = existingItem ? `Added another "${props.product.name}" to cart!` : `Added "${props.product.name}" to cart!`
+      alert(`🛒 ${message}`)
+      emit('add-to-cart', props.product)
+    }
+  } catch (error) {
+    console.error('Error adding to cart:', error)
+    
+    // If API fails, fallback to localStorage
+    let cart = JSON.parse(localStorage.getItem('shopsphere_cart') || '[]')
+    const existingItem = cart.find(item => item.id === props.product.id)
+    
+    if (existingItem) {
+      existingItem.quantity += 1
+    } else {
+      cart.push({
+        ...props.product,
+        quantity: 1,
+        image: props.product.image || null
+      })
+    }
+    
+    localStorage.setItem('shopsphere_cart', JSON.stringify(cart))
+    window.dispatchEvent(new Event('storage'))
+    window.dispatchEvent(new CustomEvent('cart-updated'))
+    
+    const message = existingItem ? `Added another "${props.product.name}" to cart!` : `Added "${props.product.name}" to cart!`
+    alert(`🛒 ${message}`)
+    emit('add-to-cart', props.product)
+  } finally {
+    isAddingToCart.value = false
   }
-  
-  localStorage.setItem('shopsphere_cart', JSON.stringify(cart))
-  emit('add-to-cart', props.product)
-  window.dispatchEvent(new Event('storage'))
-  window.dispatchEvent(new CustomEvent('cart-updated'))
-  
-  const message = existingItem ? `Added another "${props.product.name}" to cart!` : `Added "${props.product.name}" to cart!`
-  alert(`🛒 ${message}`)
 }
 
 const viewProduct = () => {

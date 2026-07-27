@@ -104,4 +104,59 @@ class Product extends Model
     {
         return $query->where('stock_quantity', '>', 0);
     }
+
+    // ===== CART HELPER METHODS =====
+    /**
+     * Check if product has enough stock
+     */
+    public function hasStock($quantity = 1)
+    {
+        return $this->stock_quantity >= $quantity;
+    }
+
+    /**
+     * Decrease stock when product is purchased
+     */
+    public function decreaseStock($quantity = 1)
+    {
+        if ($this->hasStock($quantity)) {
+            $this->decrement('stock_quantity', $quantity);
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Increase stock when product is returned
+     */
+    public function increaseStock($quantity = 1)
+    {
+        $this->increment('stock_quantity', $quantity);
+        return true;
+    }
+
+    /**
+     * Get the effective price (with discount if applicable)
+     */
+    public function getEffectivePrice()
+    {
+        return $this->is_on_sale ? $this->discounted_price : $this->price;
+    }
+
+    /**
+     * Get product image URL or fallback
+     */
+    public function getImageUrl()
+    {
+        $primaryImage = $this->images()->where('is_primary', true)->first();
+        return $primaryImage ? $primaryImage->image_url : null;
+    }
+
+    /**
+     * Check if product is available for purchase
+     */
+    public function isAvailable()
+    {
+        return $this->status === 'active' && $this->stock_quantity > 0;
+    }
 }

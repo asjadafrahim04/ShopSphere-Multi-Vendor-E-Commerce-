@@ -73,4 +73,74 @@ class User extends Authenticatable
     {
         return $this->role === 'customer';
     }
+
+    // ===== CART HELPER METHODS =====
+    /**
+     * Get or create cart for the user
+     */
+    public function getOrCreateCart()
+    {
+        return $this->cart()->firstOrCreate([]);
+    }
+
+    /**
+     * Get cart count (total items)
+     */
+    public function getCartCount()
+    {
+        $cart = $this->cart()->first();
+        if (!$cart) {
+            return 0;
+        }
+        return $cart->items()->sum('quantity');
+    }
+
+    /**
+     * Get cart total
+     */
+    public function getCartTotal()
+    {
+        $cart = $this->cart()->first();
+        if (!$cart) {
+            return 0;
+        }
+        return $cart->items()->sum(\DB::raw('quantity * price'));
+    }
+
+    /**
+     * Clear user's cart
+     */
+    public function clearCart()
+    {
+        $cart = $this->cart()->first();
+        if ($cart) {
+            $cart->items()->delete();
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Check if user has items in cart
+     */
+    public function hasCartItems()
+    {
+        $cart = $this->cart()->first();
+        if (!$cart) {
+            return false;
+        }
+        return $cart->items()->count() > 0;
+    }
+
+    /**
+     * Get user's cart items with product details
+     */
+    public function getCartItems()
+    {
+        $cart = $this->cart()->first();
+        if (!$cart) {
+            return collect();
+        }
+        return $cart->items()->with('product')->get();
+    }
 }

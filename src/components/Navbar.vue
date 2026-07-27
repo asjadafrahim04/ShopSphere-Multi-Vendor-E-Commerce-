@@ -8,6 +8,44 @@
           ShopSphere
         </router-link>
 
+        <!-- Search Bar - Desktop -->
+        <div class="search-bar">
+          <i class="bi bi-search"></i>
+          <input 
+            type="text" 
+            v-model="searchQuery" 
+            placeholder="Search for products..."
+            @keyup.enter="performSearch"
+            @focus="showSearchSuggestions = true"
+            @blur="hideSearchSuggestions"
+          />
+          <button class="search-btn" @click="performSearch">
+            <i class="bi bi-arrow-right"></i>
+          </button>
+          <div v-if="showSearchSuggestions && searchQuery.length > 0" class="search-suggestions">
+            <div v-if="filteredSuggestions.length > 0">
+              <div 
+                v-for="product in filteredSuggestions" 
+                :key="product.id"
+                class="suggestion-item"
+                @mousedown.prevent="goToProduct(product.id)"
+              >
+                <img :src="product.image" :alt="product.name" v-if="product.image" />
+                <span v-else class="suggestion-emoji">{{ product.emoji || '📦' }}</span>
+                <div class="suggestion-info">
+                  <span class="suggestion-name">{{ product.name }}</span>
+                  <span class="suggestion-vendor">{{ product.vendor }}</span>
+                </div>
+                <span class="suggestion-price">${{ product.price }}</span>
+              </div>
+            </div>
+            <div v-else class="no-suggestions">
+              <i class="bi bi-search"></i>
+              <span>No products found</span>
+            </div>
+          </div>
+        </div>
+
         <!-- Nav Links -->
         <div class="navbar-links">
           <router-link to="/" class="nav-link">Home</router-link>
@@ -58,6 +96,22 @@
         </button>
       </div>
 
+      <!-- Mobile Search -->
+      <div class="mobile-search">
+        <div class="search-bar mobile">
+          <i class="bi bi-search"></i>
+          <input 
+            type="text" 
+            v-model="searchQuery" 
+            placeholder="Search for products..."
+            @keyup.enter="performSearch"
+          />
+          <button class="search-btn" @click="performSearch">
+            <i class="bi bi-arrow-right"></i>
+          </button>
+        </div>
+      </div>
+
       <!-- Mobile Menu -->
       <div class="mobile-menu" v-show="isMenuOpen">
         <router-link to="/" class="mobile-link" @click="isMenuOpen = false">Home</router-link>
@@ -104,8 +158,9 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, watch, computed } from 'vue'
 import { useRouter } from 'vue-router'
+import { cartApi } from '@/services/api'
 
 const router = useRouter()
 const isMenuOpen = ref(false)
@@ -113,13 +168,29 @@ const isDark = ref(false)
 const cartCount = ref(0)
 const isLoggedIn = ref(false)
 const userName = ref('')
+const searchQuery = ref('')
+const showSearchSuggestions = ref(false)
+
+// ===== ALL PRODUCTS FOR SEARCH =====
+const allProducts = ref([
+  { id: 1, name: 'Wireless Noise-Cancelling Headphones', vendor: 'TechShop', price: 49.99, image: null, emoji: '🎧' },
+  { id: 2, name: 'Premium Leather Jacket', vendor: 'FashionHub', price: 89.99, image: null, emoji: '🧥' },
+  { id: 3, name: 'Smart Coffee Maker Pro', vendor: 'HomeGoods', price: 129.99, image: null, emoji: '☕' },
+  { id: 4, name: 'Fitness Smart Watch', vendor: 'GadgetWorld', price: 199.99, image: null, emoji: '⌚' },
+])
+
+const filteredSuggestions = computed(() => {
+  if (!searchQuery.value) return []
+  const query = searchQuery.value.toLowerCase()
+  return allProducts.value
+    .filter(p => p.name.toLowerCase().includes(query) || p.vendor.toLowerCase().includes(query))
+    .slice(0, 5)
+})
 
 // ===== THEME FUNCTIONS =====
 const getInitialTheme = () => {
   const savedTheme = localStorage.getItem('theme')
-  if (savedTheme) {
-    return savedTheme === 'dark'
-  }
+  if (savedTheme) return savedTheme === 'dark'
   return window.matchMedia('(prefers-color-scheme: dark)').matches
 }
 
@@ -165,65 +236,88 @@ const logout = () => {
   if (confirm('Are you sure you want to logout?')) {
     localStorage.removeItem('token')
     localStorage.removeItem('user')
+    localStorage.removeItem('shopsphere_cart')
     isLoggedIn.value = false
     userName.value = ''
+    cartCount.value = 0
     window.dispatchEvent(new CustomEvent('auth-changed'))
     router.push('/')
   }
 }
 
 // ===== CART FUNCTIONS =====
-const updateCartCount = () => {
-  const savedCart = localStorage.getItem('shopsphere_cart')
-  if (savedCart) {
-    const items = JSON.parse(savedCart)
-    cartCount.value = items.reduce((sum, item) => sum + item.quantity, 0)
-  } else {
-    cartCount.value = 0
+const updateCartCount = async () => {
+  try {
+    const token = localStorage.getItem('token')
+    if (token) {
+      const response = await cartApi.getCartTotal()
+      if (response.data.success) {
+        cartCount.value = response.data.data.count || 0
+        return
+      }
+    }
+    // Fallback to localStorage
+    const savedCart = localStorage.getItem('shopsphere_cart')
+    if (savedCart) {
+      const items = JSON.parse(savedCart)
+      cartCount.value = items.reduce((sum, item) => sum + item.quantity, 0)
+    } else {
+      cartCount.value = 0
+    }
+  } catch (error) {
+    // Fallback to localStorage
+    const savedCart = localStorage.getItem('shopsphere_cart')
+    if (savedCart) {
+      const items = JSON.parse(savedCart)
+      cartCount.value = items.reduce((sum, item) => sum + item.quantity, 0)
+    } else {
+      cartCount.value = 0
+    }
   }
 }
 
 // ===== NAVIGATION FUNCTIONS =====
-const goToCart = () => {
-  router.push('/cart')
+const goToCart = () => router.push('/cart')
+const goToWishlist = () => router.push('/wishlist')
+const goToOrders = () => router.push('/orders')
+const goToProfile = () => router.push('/profile')
+
+// ===== SEARCH FUNCTIONS =====
+const performSearch = () => {
+  if (searchQuery.value.trim()) {
+    showSearchSuggestions.value = false
+    router.push({ path: '/products', query: { search: searchQuery.value.trim() } })
+  }
 }
 
-const goToWishlist = () => {
-  router.push('/wishlist')
+const goToProduct = (productId) => {
+  showSearchSuggestions.value = false
+  searchQuery.value = ''
+  router.push(`/product/${productId}`)
 }
 
-const goToOrders = () => {
-  router.push('/orders')
-}
-
-const goToProfile = () => {
-  router.push('/profile')
+const hideSearchSuggestions = () => {
+  setTimeout(() => { showSearchSuggestions.value = false }, 200)
 }
 
 // ===== WATCHERS =====
-watch(isDark, () => {
-  applyTheme(isDark.value)
-})
+watch(isDark, () => applyTheme(isDark.value))
 
 // ===== LIFECYCLE =====
 onMounted(() => {
-  // Theme
   isDark.value = getInitialTheme()
   applyTheme(isDark.value)
-  
-  // Auth
   checkAuth()
-  
-  // Cart
   updateCartCount()
   
-  // Listen for cart updates
-  window.addEventListener('storage', () => {
-    updateCartCount()
-    checkAuth()
+  window.addEventListener('storage', () => { updateCartCount(); checkAuth() })
+  window.addEventListener('cart-updated', (event) => {
+    if (event.detail?.count !== undefined) {
+      cartCount.value = event.detail.count
+    } else {
+      updateCartCount()
+    }
   })
-  
-  window.addEventListener('cart-updated', updateCartCount)
   window.addEventListener('auth-changed', checkAuth)
 })
 </script>
@@ -260,6 +354,162 @@ onMounted(() => {
   font-size: 1.8rem;
 }
 
+/* ===== SEARCH BAR ===== */
+.search-bar {
+  position: relative;
+  flex: 1;
+  max-width: 500px;
+  display: flex;
+  align-items: center;
+  background: var(--bg-secondary);
+  border: 2px solid var(--border-color);
+  border-radius: 50px;
+  transition: var(--transition);
+}
+
+.search-bar:focus-within {
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.search-bar i {
+  position: absolute;
+  left: 16px;
+  color: var(--text-muted);
+  font-size: 1.1rem;
+}
+
+.search-bar input {
+  flex: 1;
+  padding: 10px 16px 10px 44px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  outline: none;
+}
+
+.search-bar input::placeholder {
+  color: var(--text-muted);
+}
+
+.search-btn {
+  background: var(--gradient-primary);
+  border: none;
+  color: white;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: var(--transition);
+  margin-right: 4px;
+  flex-shrink: 0;
+}
+
+.search-btn:hover {
+  transform: scale(1.05);
+}
+
+.search-suggestions {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-hover);
+  max-height: 400px;
+  overflow-y: auto;
+  z-index: 1001;
+  padding: 8px 0;
+}
+
+.suggestion-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.suggestion-item:hover {
+  background: var(--bg-secondary);
+}
+
+.suggestion-item img {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+}
+
+.suggestion-emoji {
+  font-size: 1.8rem;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-sm);
+}
+
+.suggestion-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.suggestion-name {
+  font-weight: 500;
+  color: var(--text-primary);
+  font-size: 0.95rem;
+}
+
+.suggestion-vendor {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.suggestion-price {
+  font-weight: 600;
+  color: #667eea;
+  font-size: 0.95rem;
+}
+
+.no-suggestions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px;
+  color: var(--text-muted);
+}
+
+.no-suggestions i {
+  font-size: 1.2rem;
+}
+
+/* ===== MOBILE SEARCH ===== */
+.mobile-search {
+  display: none;
+  padding: 8px 0 4px;
+}
+
+.search-bar.mobile {
+  max-width: 100%;
+}
+
+.search-bar.mobile .search-btn {
+  width: 34px;
+  height: 34px;
+}
+
+/* ===== NAV LINKS ===== */
 .navbar-links {
   display: flex;
   align-items: center;
@@ -501,11 +751,20 @@ onMounted(() => {
   .mobile-menu {
     display: flex;
   }
+  
+  .mobile-search {
+    display: block;
+  }
+  
+  .search-bar:not(.mobile) {
+    display: none;
+  }
 }
 
 @media (min-width: 769px) {
   .mobile-toggle,
-  .mobile-menu {
+  .mobile-menu,
+  .mobile-search {
     display: none !important;
   }
 }

@@ -141,7 +141,7 @@
 <script setup>
 import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
-import api from '../services/api'
+import api from '@/services/api'
 
 const router = useRouter()
 
@@ -158,7 +158,6 @@ const form = reactive({
 
 // ===== METHODS =====
 const handleLogin = async () => {
-  // Validate
   if (!form.email || !form.password) {
     errorMessage.value = 'Please fill in all fields!'
     return
@@ -178,13 +177,14 @@ const handleLogin = async () => {
       localStorage.setItem('token', response.data.token)
       localStorage.setItem('user', JSON.stringify(response.data.user))
       
-      // Dispatch auth event
+      // Remove old localStorage cart (will be fetched from API)
+      localStorage.removeItem('shopsphere_cart')
+      
+      // Dispatch events
       window.dispatchEvent(new CustomEvent('auth-changed'))
+      window.dispatchEvent(new CustomEvent('cart-updated'))
       
       isLoading.value = false
-      
-      // Show success message
-      alert('✅ Login successful! Welcome back, ' + response.data.user.name + '!')
       
       // Redirect to home
       router.push('/')
@@ -193,11 +193,9 @@ const handleLogin = async () => {
     isLoading.value = false
     
     if (error.response) {
-      // Server responded with error
       if (error.response.status === 401) {
         errorMessage.value = 'Invalid email or password. Please try again.'
       } else if (error.response.status === 422) {
-        // Validation errors
         const errors = error.response.data.errors
         if (errors) {
           errorMessage.value = Object.values(errors).flat()[0]
@@ -208,10 +206,8 @@ const handleLogin = async () => {
         errorMessage.value = error.response.data?.message || 'Login failed. Please try again.'
       }
     } else if (error.request) {
-      // No response from server
       errorMessage.value = 'Cannot connect to server. Please make sure the backend is running.'
     } else {
-      // Other errors
       errorMessage.value = 'An unexpected error occurred. Please try again.'
     }
   }
@@ -250,7 +246,6 @@ const forgotPassword = () => {
   padding: 0 20px;
 }
 
-/* ===== LOGIN CONTAINER ===== */
 .login-container {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -260,7 +255,6 @@ const forgotPassword = () => {
   margin: 0 auto;
 }
 
-/* ===== LOGIN CARD ===== */
 .login-card {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
@@ -286,7 +280,6 @@ const forgotPassword = () => {
   font-size: 1rem;
 }
 
-/* ===== ERROR MESSAGE ===== */
 .error-message {
   display: flex;
   align-items: center;
@@ -304,7 +297,6 @@ const forgotPassword = () => {
   flex-shrink: 0;
 }
 
-/* ===== FORM ===== */
 .login-form {
   display: flex;
   flex-direction: column;
@@ -373,7 +365,6 @@ const forgotPassword = () => {
   color: var(--text-primary);
 }
 
-/* ===== FORM OPTIONS ===== */
 .form-options {
   display: flex;
   justify-content: space-between;
@@ -409,7 +400,6 @@ const forgotPassword = () => {
   text-decoration: underline;
 }
 
-/* ===== LOGIN BUTTON ===== */
 .login-btn {
   width: 100%;
   text-align: center;
@@ -432,7 +422,6 @@ const forgotPassword = () => {
   100% { transform: rotate(360deg); }
 }
 
-/* ===== DIVIDER ===== */
 .divider {
   display: flex;
   align-items: center;
@@ -454,7 +443,6 @@ const forgotPassword = () => {
   text-transform: uppercase;
 }
 
-/* ===== SOCIAL LOGIN ===== */
 .social-login {
   display: flex;
   flex-direction: column;
@@ -496,7 +484,6 @@ const forgotPassword = () => {
   box-shadow: var(--shadow);
 }
 
-/* ===== REGISTER LINK ===== */
 .register-link {
   text-align: center;
   margin-top: 20px;
@@ -517,7 +504,6 @@ const forgotPassword = () => {
   text-decoration: underline;
 }
 
-/* ===== LOGIN INFO SIDE ===== */
 .login-info {
   background: var(--gradient-primary);
   border-radius: var(--radius);
@@ -593,7 +579,6 @@ const forgotPassword = () => {
   opacity: 0.9;
 }
 
-/* ===== RESPONSIVE ===== */
 @media (max-width: 1024px) {
   .login-container {
     grid-template-columns: 1fr;
