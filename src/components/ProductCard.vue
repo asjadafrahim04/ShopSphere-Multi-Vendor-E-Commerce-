@@ -51,7 +51,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { cartApi } from '@/services/api'
+import { cartApi, wishlistApi } from '../services/api'
 
 const props = defineProps({
   product: {
@@ -77,15 +77,77 @@ const props = defineProps({
 const isWishlisted = ref(false)
 const imageError = ref(false)
 const isAddingToCart = ref(false)
+const isTogglingWishlist = ref(false)
 
 // ===== CHECK IF PRODUCT IS IN WISHLIST =====
-const checkWishlistStatus = () => {
+const checkWishlistStatus = async () => {
+  // Check if user is logged in
+  const token = localStorage.getItem('token')
+  
+  if (token) {
+    try {
+      const response = await wishlistApi.checkInWishlist(props.product.id)
+      if (response.data.success) {
+        isWishlisted.value = response.data.data.in_wishlist
+        return
+      }
+    } catch (error) {
+      console.error('Error checking wishlist status via API:', error)
+      // Fallback to localStorage
+      const wishlist = JSON.parse(localStorage.getItem('shopsphere_wishlist') || '[]')
+      isWishlisted.value = wishlist.some(item => item.id === props.product.id)
+      return
+    }
+  }
+  
+  // Not logged in or API failed - use localStorage
   const wishlist = JSON.parse(localStorage.getItem('shopsphere_wishlist') || '[]')
   isWishlisted.value = wishlist.some(item => item.id === props.product.id)
 }
 
 // ===== TOGGLE WISHLIST =====
-const toggleWishlist = () => {
+const toggleWishlist = async () => {
+  if (isTogglingWishlist.value) return
+  isTogglingWishlist.value = true
+
+  const token = localStorage.getItem('token')
+  
+  if (token) {
+    // Logged in - use API
+    try {
+      if (isWishlisted.value) {
+        // Remove from wishlist
+        const response = await wishlistApi.removeFromWishlist(props.product.id)
+        if (response.data.success) {
+          isWishlisted.value = false
+          alert('💔 Removed from wishlist!')
+          window.dispatchEvent(new CustomEvent('wishlist-updated'))
+        }
+      } else {
+        // Add to wishlist
+        const response = await wishlistApi.addToWishlist(props.product.id)
+        if (response.data.success) {
+          isWishlisted.value = true
+          alert('❤️ Added to wishlist!')
+          window.dispatchEvent(new CustomEvent('wishlist-updated'))
+        }
+      }
+    } catch (error) {
+      console.error('Error toggling wishlist via API:', error)
+      // Fallback to localStorage
+      toggleWishlistLocal()
+    }
+  } else {
+    // Not logged in - use localStorage
+    toggleWishlistLocal()
+  }
+  
+  isTogglingWishlist.value = false
+  emit('wishlist-toggle', { productId: props.product.id, isWishlisted: isWishlisted.value })
+}
+
+// ===== TOGGLE WISHLIST (LocalStorage Fallback) =====
+const toggleWishlistLocal = () => {
   isWishlisted.value = !isWishlisted.value
   
   let wishlist = JSON.parse(localStorage.getItem('shopsphere_wishlist') || '[]')
@@ -93,7 +155,6 @@ const toggleWishlist = () => {
   if (isWishlisted.value) {
     const exists = wishlist.some(item => item.id === props.product.id)
     if (!exists) {
-      // Store the FULL product data including image
       wishlist.push({
         ...props.product,
         image: props.product.image || null
@@ -107,38 +168,29 @@ const toggleWishlist = () => {
     alert('💔 Removed from wishlist!')
   }
   
-  emit('wishlist-toggle', { productId: props.product.id, isWishlisted: isWishlisted.value })
+  window.dispatchEvent(new CustomEvent('wishlist-updated'))
 }
 
-// ===== ADD TO CART (API Integration) =====
+// ===== ADD TO CART =====
 const addToCart = async () => {
-  // Prevent multiple clicks
   if (isAddingToCart.value) return
-  
   isAddingToCart.value = true
 
   try {
-    // Check if user is logged in
     const token = localStorage.getItem('token')
     
     if (token) {
       // Logged in - use API
       const response = await cartApi.addToCart(props.product.id, 1)
-      
       if (response.data.success) {
-        // Update cart count in navbar
         window.dispatchEvent(new CustomEvent('cart-updated', { 
           detail: { count: response.data.data.cart_count } 
         }))
-        
-        // Show success message
         alert(`🛒 Added "${props.product.name}" to cart!`)
-        
-        // Emit event to parent
         emit('add-to-cart', props.product)
       }
     } else {
-      // Not logged in - use localStorage (fallback)
+      // Not logged in - use localStorage
       let cart = JSON.parse(localStorage.getItem('shopsphere_cart') || '[]')
       const existingItem = cart.find(item => item.id === props.product.id)
       
@@ -153,8 +205,6 @@ const addToCart = async () => {
       }
       
       localStorage.setItem('shopsphere_cart', JSON.stringify(cart))
-      
-      // Update badge
       window.dispatchEvent(new Event('storage'))
       window.dispatchEvent(new CustomEvent('cart-updated'))
       
@@ -164,8 +214,7 @@ const addToCart = async () => {
     }
   } catch (error) {
     console.error('Error adding to cart:', error)
-    
-    // If API fails, fallback to localStorage
+    // Fallback to localStorage
     let cart = JSON.parse(localStorage.getItem('shopsphere_cart') || '[]')
     const existingItem = cart.find(item => item.id === props.product.id)
     
@@ -199,7 +248,6 @@ const viewProduct = () => {
 const handleImageError = (e) => {
   imageError.value = true
   e.target.style.display = 'none'
-  // Show fallback emoji
   const parent = e.target.parentElement
   const fallback = document.createElement('span')
   fallback.className = 'product-emoji'

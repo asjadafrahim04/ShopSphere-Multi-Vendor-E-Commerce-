@@ -10,24 +10,31 @@ const api = axios.create({
     }
 })
 
-// Add token to requests
-api.interceptors.request.use(config => {
-    const token = localStorage.getItem('token')
-    if (token) {
-        config.headers.Authorization = `Bearer ${token}`
+// ===== REQUEST INTERCEPTOR =====
+api.interceptors.request.use(
+    config => {
+        const token = localStorage.getItem('token')
+        if (token) {
+            config.headers.Authorization = `Bearer ${token}`
+        }
+        return config
+    },
+    error => {
+        return Promise.reject(error)
     }
-    return config
-})
+)
 
-// Handle response errors
+// ===== RESPONSE INTERCEPTOR =====
 api.interceptors.response.use(
     response => response,
     error => {
         if (error.response?.status === 401) {
             localStorage.removeItem('token')
             localStorage.removeItem('user')
+            localStorage.removeItem('shopsphere_cart')
             window.dispatchEvent(new CustomEvent('auth-changed'))
-            if (!window.location.pathname.includes('/login')) {
+            if (!window.location.pathname.includes('/login') && 
+                !window.location.pathname.includes('/register')) {
                 window.location.href = '/login'
             }
         }
@@ -35,30 +42,34 @@ api.interceptors.response.use(
     }
 )
 
+// ============================================================
 // ===== CART API METHODS =====
+// ============================================================
 export const cartApi = {
-    // Get cart
     getCart: () => api.get('/cart'),
-    
-    // Add item to cart
     addToCart: (productId, quantity = 1) => 
         api.post('/cart/add', { product_id: productId, quantity }),
-    
-    // Update cart item quantity
     updateCartItem: (itemId, quantity) => 
         api.put(`/cart/update/${itemId}`, { quantity }),
-    
-    // Remove item from cart
     removeCartItem: (itemId) => 
         api.delete(`/cart/remove/${itemId}`),
-    
-    // Clear cart
     clearCart: () => 
         api.delete('/cart/clear'),
-    
-    // Get cart total
     getCartTotal: () => 
-        api.get('/cart/total')
+        api.get('/cart/total'),
+}
+
+// ============================================================
+// ===== WISHLIST API METHODS =====
+// ============================================================
+export const wishlistApi = {
+    getWishlist: () => api.get('/wishlist'),
+    addToWishlist: (productId) => 
+        api.post(`/wishlist/add/${productId}`),
+    removeFromWishlist: (productId) => 
+        api.delete(`/wishlist/remove/${productId}`),
+    checkInWishlist: (productId) => 
+        api.get(`/wishlist/check/${productId}`),
 }
 
 export default api

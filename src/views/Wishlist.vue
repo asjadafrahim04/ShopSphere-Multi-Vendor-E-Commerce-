@@ -7,8 +7,21 @@
         <p class="page-subtitle">{{ wishlistItems.length }} items saved</p>
       </div>
 
+      <!-- Loading State -->
+      <div v-if="loading" class="loading-state">
+        <div class="spinner"></div>
+        <p>Loading your wishlist...</p>
+      </div>
+
+      <!-- Error State -->
+      <div v-else-if="error" class="error-state">
+        <i class="bi bi-exclamation-circle" style="font-size: 3rem; color: #ef4444;"></i>
+        <p>{{ error }}</p>
+        <button class="btn-primary-modern" @click="loadWishlist">Try Again</button>
+      </div>
+
       <!-- Wishlist Content -->
-      <div v-if="wishlistItems.length > 0" class="wishlist-content">
+      <div v-else-if="wishlistItems.length > 0" class="wishlist-content">
         <div class="wishlist-grid">
           <div v-for="item in wishlistItems" :key="item.id" class="wishlist-item">
             <!-- Product Image -->
@@ -26,7 +39,7 @@
             
             <!-- Product Details -->
             <div class="item-details">
-              <div class="item-vendor">{{ item.vendor }}</div>
+              <div class="item-vendor">{{ item.vendor || 'ShopSphere' }}</div>
               <h4 class="item-name">{{ item.name }}</h4>
               
               <!-- Rating -->
@@ -48,7 +61,7 @@
                 <button class="btn-primary-modern add-to-cart-btn" @click="addToCart(item)">
                   <i class="bi bi-cart-plus me-2"></i>Add to Cart
                 </button>
-                <button class="remove-btn" @click="removeFromWishlist(item.id)">
+                <button class="remove-btn" @click="removeFromWishlist(item.product_id || item.id)">
                   <i class="bi bi-trash3"></i> Remove
                 </button>
               </div>
@@ -75,98 +88,140 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { wishlistApi, cartApi } from '../services/api'
 
 const router = useRouter()
 
 // ===== STATE =====
 const wishlistItems = ref([])
+const loading = ref(true)
+const error = ref(null)
 
 // ===== METHODS =====
-const loadWishlist = () => {
-  const savedWishlist = localStorage.getItem('shopsphere_wishlist')
-  if (savedWishlist) {
-    wishlistItems.value = JSON.parse(savedWishlist)
-  } else {
-    // Add some demo items if wishlist is empty
-    wishlistItems.value = [
-      {
-        id: 2,
-        name: 'Premium Leather Jacket',
-        vendor: 'FashionHub',
-        price: 89.99,
-        originalPrice: null,
-        rating: 4.5,
-        reviews: 189,
-        image: 'https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=870&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D',
-        emoji: '🧥',
-        imageBg: '#f8f0e8',
-        category: 'Fashion'
-      },
-      {
-        id: 4,
-        name: 'Fitness Smart Watch',
-        vendor: 'GadgetWorld',
-        price: 199.99,
-        originalPrice: 249.99,
-        rating: 4.9,
-        reviews: 456,
-        image: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?q=80&w=870&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D',
-        emoji: '⌚',
-        imageBg: '#e0e8f0',
-        category: 'Electronics'
+const loadWishlist = async () => {
+  loading.value = true
+  error.value = null
+  
+  try {
+    // Check if user is logged in
+    const token = localStorage.getItem('token')
+    
+    if (token) {
+      // Logged in - use API
+      const response = await wishlistApi.getWishlist()
+      if (response.data.success) {
+        wishlistItems.value = response.data.data.items.map(item => ({
+          id: item.id,
+          product_id: item.product_id,
+          name: item.name,
+          vendor: item.vendor || 'ShopSphere',
+          price: item.price,
+          originalPrice: item.compare_price || null,
+          rating: item.rating || 0,
+          reviews: item.reviews_count || 0,
+          image: item.image || null,
+          emoji: '📦',
+          isNew: false,
+          discount: item.discount_percentage || null,
+          imageBg: '#e8ecf1',
+        }))
       }
-    ]
-    saveWishlist()
+    } else {
+      // Not logged in - use localStorage (fallback)
+      const savedWishlist = localStorage.getItem('shopsphere_wishlist')
+      if (savedWishlist) {
+        wishlistItems.value = JSON.parse(savedWishlist)
+      } else {
+        wishlistItems.value = []
+      }
+    }
+  } catch (err) {
+    console.error('Error loading wishlist:', err)
+    error.value = 'Failed to load wishlist. Please try again.'
+    
+    // Fallback to localStorage
+    const savedWishlist = localStorage.getItem('shopsphere_wishlist')
+    if (savedWishlist) {
+      wishlistItems.value = JSON.parse(savedWishlist)
+    }
+  } finally {
+    loading.value = false
   }
 }
 
-const saveWishlist = () => {
-  localStorage.setItem('shopsphere_wishlist', JSON.stringify(wishlistItems.value))
-}
-
-const addToCart = (product) => {
-  // Get existing cart
-  let cart = JSON.parse(localStorage.getItem('shopsphere_cart') || '[]')
-  
-  // Check if product exists
-  const existingItem = cart.find(item => item.id === product.id)
-  
-  if (existingItem) {
-    existingItem.quantity += 1
-  } else {
-    cart.push({
-      ...product,
-      quantity: 1,
-      image: product.image || null
-    })
+const addToCart = async (product) => {
+  try {
+    const token = localStorage.getItem('token')
+    const productId = product.product_id || product.id
+    
+    if (token) {
+      // Logged in - use API
+      const response = await cartApi.addToCart(productId, 1)
+      if (response.data.success) {
+        alert(`🛒 Added "${product.name}" to cart!`)
+        window.dispatchEvent(new CustomEvent('cart-updated', { 
+          detail: { count: response.data.data.cart_count } 
+        }))
+      }
+    } else {
+      // Not logged in - use localStorage
+      let cart = JSON.parse(localStorage.getItem('shopsphere_cart') || '[]')
+      const existingItem = cart.find(item => item.id === productId)
+      
+      if (existingItem) {
+        existingItem.quantity += 1
+      } else {
+        cart.push({
+          ...product,
+          id: productId,
+          quantity: 1,
+          image: product.image || null
+        })
+      }
+      
+      localStorage.setItem('shopsphere_cart', JSON.stringify(cart))
+      window.dispatchEvent(new Event('storage'))
+      window.dispatchEvent(new CustomEvent('cart-updated'))
+      alert(`🛒 Added "${product.name}" to cart!`)
+    }
+  } catch (error) {
+    console.error('Error adding to cart:', error)
+    alert('Failed to add to cart. Please try again.')
   }
-  
-  // Save to localStorage
-  localStorage.setItem('shopsphere_cart', JSON.stringify(cart))
-  
-  // Update badge
-  window.dispatchEvent(new Event('storage'))
-  window.dispatchEvent(new CustomEvent('cart-updated'))
-  
-  alert(`🛒 Added "${product.name}" to cart!`)
 }
 
-const removeFromWishlist = (productId) => {
-  if (confirm('Remove this item from wishlist?')) {
-    wishlistItems.value = wishlistItems.value.filter(item => item.id !== productId)
-    saveWishlist()
-    alert('💔 Removed from wishlist!')
+const removeFromWishlist = async (productId) => {
+  if (!confirm('Remove this item from wishlist?')) return
+  
+  try {
+    const token = localStorage.getItem('token')
+    
+    if (token) {
+      // Logged in - use API
+      const response = await wishlistApi.removeFromWishlist(productId)
+      if (response.data.success) {
+        wishlistItems.value = wishlistItems.value.filter(item => 
+          (item.product_id || item.id) !== productId
+        )
+        alert('💔 Removed from wishlist!')
+        window.dispatchEvent(new CustomEvent('wishlist-updated'))
+      }
+    } else {
+      // Not logged in - use localStorage
+      wishlistItems.value = wishlistItems.value.filter(item => 
+        (item.product_id || item.id) !== productId
+      )
+      localStorage.setItem('shopsphere_wishlist', JSON.stringify(wishlistItems.value))
+      alert('💔 Removed from wishlist!')
+    }
+  } catch (error) {
+    console.error('Error removing from wishlist:', error)
+    alert('Failed to remove from wishlist. Please try again.')
   }
 }
 
-const continueShopping = () => {
-  router.push('/products')
-}
-
-// ===== HANDLE IMAGE ERROR =====
 const handleImageError = (e) => {
   e.target.style.display = 'none'
-  // Show fallback emoji
   const parent = e.target.parentElement
   const fallback = document.createElement('span')
   fallback.className = 'item-emoji'
@@ -174,9 +229,16 @@ const handleImageError = (e) => {
   parent.appendChild(fallback)
 }
 
+const continueShopping = () => {
+  router.push('/products')
+}
+
 // ===== LIFECYCLE =====
 onMounted(() => {
   loadWishlist()
+  
+  // Listen for wishlist updates from other components
+  window.addEventListener('wishlist-updated', loadWishlist)
 })
 </script>
 
@@ -202,6 +264,51 @@ onMounted(() => {
 .page-subtitle {
   color: var(--text-secondary);
   font-size: 1.1rem;
+}
+
+/* ===== LOADING STATE ===== */
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+  gap: 20px;
+}
+
+.spinner {
+  width: 48px;
+  height: 48px;
+  border: 4px solid var(--border-color);
+  border-top: 4px solid #667eea;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.loading-state p {
+  color: var(--text-secondary);
+  font-size: 1.1rem;
+}
+
+/* ===== ERROR STATE ===== */
+.error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+  gap: 16px;
+  text-align: center;
+}
+
+.error-state p {
+  color: var(--text-secondary);
+  font-size: 1.05rem;
 }
 
 /* ===== WISHLIST GRID ===== */

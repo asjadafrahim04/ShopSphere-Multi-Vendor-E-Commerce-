@@ -60,9 +60,10 @@
             <i :class="isDark ? 'bi bi-sun-fill' : 'bi bi-moon-fill'"></i>
           </button>
           
-          <!-- Wishlist Button -->
-          <button class="action-btn" @click="goToWishlist" title="Wishlist">
+          <!-- Wishlist Button with Badge -->
+          <button class="action-btn wishlist-btn-nav" @click="goToWishlist" title="Wishlist" style="position: relative;">
             <i class="bi bi-heart"></i>
+            <span v-if="wishlistCount > 0" class="wishlist-badge">{{ wishlistCount }}</span>
           </button>
 
           <!-- Cart Button with Badge -->
@@ -127,6 +128,7 @@
         <!-- Mobile Wishlist Link -->
         <router-link to="/wishlist" class="mobile-link" @click="isMenuOpen = false">
           <i class="bi bi-heart me-2"></i>Wishlist
+          <span v-if="wishlistCount > 0" class="mobile-badge">{{ wishlistCount }}</span>
         </router-link>
 
         <!-- Mobile Orders Link -->
@@ -160,12 +162,13 @@
 <script setup>
 import { ref, onMounted, watch, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { cartApi } from '@/services/api'
+import { cartApi, wishlistApi } from '@/services/api'
 
 const router = useRouter()
 const isMenuOpen = ref(false)
 const isDark = ref(false)
 const cartCount = ref(0)
+const wishlistCount = ref(0)
 const isLoggedIn = ref(false)
 const userName = ref('')
 const searchQuery = ref('')
@@ -237,9 +240,11 @@ const logout = () => {
     localStorage.removeItem('token')
     localStorage.removeItem('user')
     localStorage.removeItem('shopsphere_cart')
+    localStorage.removeItem('shopsphere_wishlist')
     isLoggedIn.value = false
     userName.value = ''
     cartCount.value = 0
+    wishlistCount.value = 0
     window.dispatchEvent(new CustomEvent('auth-changed'))
     router.push('/')
   }
@@ -272,6 +277,37 @@ const updateCartCount = async () => {
       cartCount.value = items.reduce((sum, item) => sum + item.quantity, 0)
     } else {
       cartCount.value = 0
+    }
+  }
+}
+
+// ===== WISHLIST FUNCTIONS =====
+const updateWishlistCount = async () => {
+  try {
+    const token = localStorage.getItem('token')
+    if (token) {
+      const response = await wishlistApi.getWishlist()
+      if (response.data.success) {
+        wishlistCount.value = response.data.data.count || 0
+        return
+      }
+    }
+    // Fallback to localStorage
+    const savedWishlist = localStorage.getItem('shopsphere_wishlist')
+    if (savedWishlist) {
+      const items = JSON.parse(savedWishlist)
+      wishlistCount.value = items.length
+    } else {
+      wishlistCount.value = 0
+    }
+  } catch (error) {
+    // Fallback to localStorage
+    const savedWishlist = localStorage.getItem('shopsphere_wishlist')
+    if (savedWishlist) {
+      const items = JSON.parse(savedWishlist)
+      wishlistCount.value = items.length
+    } else {
+      wishlistCount.value = 0
     }
   }
 }
@@ -309,8 +345,14 @@ onMounted(() => {
   applyTheme(isDark.value)
   checkAuth()
   updateCartCount()
+  updateWishlistCount()
   
-  window.addEventListener('storage', () => { updateCartCount(); checkAuth() })
+  window.addEventListener('storage', () => { 
+    updateCartCount()
+    updateWishlistCount()
+    checkAuth() 
+  })
+  
   window.addEventListener('cart-updated', (event) => {
     if (event.detail?.count !== undefined) {
       cartCount.value = event.detail.count
@@ -318,6 +360,11 @@ onMounted(() => {
       updateCartCount()
     }
   })
+  
+  window.addEventListener('wishlist-updated', () => {
+    updateWishlistCount()
+  })
+  
   window.addEventListener('auth-changed', checkAuth)
 })
 </script>
@@ -567,31 +614,25 @@ onMounted(() => {
   font-size: 1rem;
 }
 
-/* ===== USER MENU ===== */
-.user-menu {
+/* ===== WISHLIST BADGE ===== */
+.wishlist-btn-nav {
+  position: relative;
+}
+
+.wishlist-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background: #ef4444;
+  color: white;
+  font-size: 9px;
+  font-weight: 700;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
-}
-
-.profile-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 16px !important;
-  font-size: 13px !important;
-  white-space: nowrap;
-}
-
-.user-name {
-  max-width: 100px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.signin-btn {
-  padding: 6px 20px !important;
-  font-size: 13px !important;
+  justify-content: center;
 }
 
 /* ===== CART BADGE ===== */
@@ -620,6 +661,33 @@ onMounted(() => {
   0% { transform: scale(1); }
   50% { transform: scale(1.1); }
   100% { transform: scale(1); }
+}
+
+/* ===== USER MENU ===== */
+.user-menu {
+  display: flex;
+  align-items: center;
+}
+
+.profile-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 16px !important;
+  font-size: 13px !important;
+  white-space: nowrap;
+}
+
+.user-name {
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.signin-btn {
+  padding: 6px 20px !important;
+  font-size: 13px !important;
 }
 
 /* ===== THEME TOGGLE ===== */
@@ -771,6 +839,10 @@ onMounted(() => {
 
 /* ===== DARK MODE ===== */
 html.dark .cart-badge {
+  background: #ef4444;
+}
+
+html.dark .wishlist-badge {
   background: #ef4444;
 }
 
