@@ -33,7 +33,7 @@
                 <span class="stat-label">Cart Items</span>
               </div>
             </div>
-            <button class="btn-outline-modern logout-btn" @click="logout">
+            <button class="logout-btn" @click="logout">
               <i class="bi bi-box-arrow-right me-2"></i>Logout
             </button>
           </div>
@@ -74,7 +74,7 @@
                 </div>
                 <div class="form-group">
                   <label>Email</label>
-                  <input type="email" v-model="userInfo.email" placeholder="Enter your email" />
+                  <input type="email" v-model="userInfo.email" placeholder="Enter your email" disabled />
                 </div>
               </div>
               <div class="form-row">
@@ -165,11 +165,11 @@ const router = useRouter()
 
 // ===== STATE =====
 const userInfo = ref({
-  name: 'John Doe',
-  email: 'john@example.com',
-  phone: '+880 17XXXXXXXX',
-  dob: '1990-01-01',
-  address: '123 Main Street, Dhaka, Bangladesh'
+  name: '',
+  email: '',
+  phone: '',
+  dob: '',
+  address: ''
 })
 
 const passwordData = ref({
@@ -199,9 +199,16 @@ const recentOrders = computed(() => {
 // ===== METHODS =====
 const loadData = () => {
   // Load user info from localStorage
-  const savedUser = localStorage.getItem('shopsphere_user')
+  const savedUser = localStorage.getItem('user')
   if (savedUser) {
-    userInfo.value = JSON.parse(savedUser)
+    try {
+      const userData = JSON.parse(savedUser)
+      userInfo.value.name = userData.name || 'Guest User'
+      userInfo.value.email = userData.email || 'guest@example.com'
+      userInfo.value.phone = userData.phone || ''
+    } catch (e) {
+      console.error('Error parsing user data:', e)
+    }
   }
 
   // Load orders
@@ -226,7 +233,17 @@ const loadData = () => {
 }
 
 const updateProfile = () => {
-  localStorage.setItem('shopsphere_user', JSON.stringify(userInfo.value))
+  // Save to localStorage
+  const userData = {
+    name: userInfo.value.name,
+    email: userInfo.value.email,
+    phone: userInfo.value.phone
+  }
+  localStorage.setItem('user', JSON.stringify(userData))
+  
+  // Update nav
+  window.dispatchEvent(new CustomEvent('auth-changed'))
+  
   alert('✅ Profile updated successfully!')
 }
 
@@ -267,10 +284,18 @@ const getStatusClass = (status) => {
 
 const logout = () => {
   if (confirm('Are you sure you want to logout?')) {
-    // Clear user session (demo)
-    localStorage.removeItem('shopsphere_user')
+    // Clear all auth data
+    localStorage.removeItem('token')
+    localStorage.removeItem('user')
+    
+    // Dispatch auth event
+    window.dispatchEvent(new CustomEvent('auth-changed'))
+    
+    // Redirect to home
+    router.push('/')
+    
+    // Show message
     alert('👋 Logged out successfully!')
-    router.push('/login')
   }
 }
 
@@ -387,14 +412,21 @@ onMounted(() => {
 .logout-btn {
   width: 100%;
   text-align: center;
-  padding: 10px;
-  border-color: #ef4444;
+  padding: 12px;
+  background: none;
+  border: 2px solid #ef4444;
+  border-radius: 50px;
   color: #ef4444;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+  font-size: 1rem;
 }
 
 .logout-btn:hover {
   background: #ef4444;
   color: white;
+  transform: translateY(-2px);
 }
 
 /* ===== QUICK LINKS ===== */
@@ -487,6 +519,11 @@ onMounted(() => {
   outline: none;
   border-color: #667eea;
   box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.form-group input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .update-btn {

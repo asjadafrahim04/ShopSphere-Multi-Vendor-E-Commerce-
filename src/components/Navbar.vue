@@ -39,12 +39,15 @@
           </button>
 
           <!-- Profile / Sign In Button -->
-          <router-link v-if="!isLoggedIn" to="/login" class="btn-primary-modern" style="padding: 8px 24px; font-size: 14px;">
+          <div v-if="isLoggedIn" class="user-menu">
+            <button class="btn-primary-modern profile-btn" @click="goToProfile">
+              <i class="bi bi-person me-1"></i>
+              <span class="user-name">{{ userName }}</span>
+            </button>
+          </div>
+          <router-link v-else to="/login" class="btn-primary-modern signin-btn">
             Sign In
           </router-link>
-          <button v-else class="btn-primary-modern profile-btn" @click="goToProfile" style="padding: 8px 24px; font-size: 14px;">
-            <i class="bi bi-person me-2"></i>Profile
-          </button>
         </div>
 
         <!-- Mobile Toggle -->
@@ -84,12 +87,17 @@
         </button>
 
         <!-- Mobile Profile / Login -->
-        <router-link v-if="!isLoggedIn" to="/login" class="mobile-link mobile-login" @click="isMenuOpen = false">
+        <div v-if="isLoggedIn" class="mobile-user-section">
+          <router-link to="/profile" class="mobile-link" @click="isMenuOpen = false">
+            <i class="bi bi-person me-2"></i>{{ userName }}
+          </router-link>
+          <button class="mobile-link mobile-logout" @click="logout">
+            <i class="bi bi-box-arrow-right me-2"></i>Logout
+          </button>
+        </div>
+        <router-link v-else to="/login" class="mobile-link mobile-login" @click="isMenuOpen = false">
           Sign In
         </router-link>
-        <button v-else class="mobile-link mobile-login" @click="goToProfile; isMenuOpen = false">
-          <i class="bi bi-person me-2"></i>Profile
-        </button>
       </div>
     </div>
   </nav>
@@ -104,15 +112,14 @@ const isMenuOpen = ref(false)
 const isDark = ref(false)
 const cartCount = ref(0)
 const isLoggedIn = ref(false)
+const userName = ref('')
 
 // ===== THEME FUNCTIONS =====
 const getInitialTheme = () => {
-  // Check if user has saved preference
   const savedTheme = localStorage.getItem('theme')
   if (savedTheme) {
     return savedTheme === 'dark'
   }
-  // Otherwise check system preference
   return window.matchMedia('(prefers-color-scheme: dark)').matches
 }
 
@@ -134,15 +141,35 @@ const applyTheme = (dark) => {
   }
 }
 
-// Watch for changes
-watch(isDark, (newVal) => {
-  applyTheme(newVal)
-})
-
 // ===== AUTH FUNCTIONS =====
 const checkAuth = () => {
-  const user = localStorage.getItem('shopsphere_user')
-  isLoggedIn.value = !!user
+  const user = localStorage.getItem('user')
+  const token = localStorage.getItem('token')
+  
+  if (token && user) {
+    try {
+      const userData = JSON.parse(user)
+      isLoggedIn.value = true
+      userName.value = userData.name || 'User'
+    } catch (e) {
+      isLoggedIn.value = false
+      userName.value = ''
+    }
+  } else {
+    isLoggedIn.value = false
+    userName.value = ''
+  }
+}
+
+const logout = () => {
+  if (confirm('Are you sure you want to logout?')) {
+    localStorage.removeItem('token')
+    localStorage.removeItem('user')
+    isLoggedIn.value = false
+    userName.value = ''
+    window.dispatchEvent(new CustomEvent('auth-changed'))
+    router.push('/')
+  }
 }
 
 // ===== CART FUNCTIONS =====
@@ -173,9 +200,14 @@ const goToProfile = () => {
   router.push('/profile')
 }
 
+// ===== WATCHERS =====
+watch(isDark, () => {
+  applyTheme(isDark.value)
+})
+
 // ===== LIFECYCLE =====
 onMounted(() => {
-  // Theme - set initial state
+  // Theme
   isDark.value = getInitialTheme()
   applyTheme(isDark.value)
   
@@ -185,16 +217,13 @@ onMounted(() => {
   // Cart
   updateCartCount()
   
-  // Listen for cart updates from other components
+  // Listen for cart updates
   window.addEventListener('storage', () => {
     updateCartCount()
     checkAuth()
   })
   
-  // Custom event for cart updates
   window.addEventListener('cart-updated', updateCartCount)
-  
-  // Listen for auth changes
   window.addEventListener('auth-changed', checkAuth)
 })
 </script>
@@ -214,6 +243,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 16px;
 }
 
 .navbar-logo {
@@ -255,20 +285,21 @@ onMounted(() => {
   background: rgba(102, 126, 234, 0.1);
 }
 
+/* ===== ACTIONS ===== */
 .navbar-actions {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
 }
 
 .action-btn {
-  width: 40px;
-  height: 40px;
+  width: 38px;
+  height: 38px;
   border-radius: 50%;
   border: none;
   background: transparent;
   color: var(--text-secondary);
-  font-size: 1.2rem;
+  font-size: 1.1rem;
   cursor: pointer;
   transition: var(--transition);
   display: flex;
@@ -282,16 +313,35 @@ onMounted(() => {
   color: var(--text-primary);
 }
 
-/* ===== ORDERS BUTTON ===== */
 .orders-btn {
-  font-size: 1.1rem;
+  font-size: 1rem;
 }
 
-/* ===== PROFILE BUTTON ===== */
+/* ===== USER MENU ===== */
+.user-menu {
+  display: flex;
+  align-items: center;
+}
+
 .profile-btn {
   display: flex;
   align-items: center;
   gap: 6px;
+  padding: 6px 16px !important;
+  font-size: 13px !important;
+  white-space: nowrap;
+}
+
+.user-name {
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.signin-btn {
+  padding: 6px 20px !important;
+  font-size: 13px !important;
 }
 
 /* ===== CART BADGE ===== */
@@ -301,14 +351,14 @@ onMounted(() => {
 
 .cart-badge {
   position: absolute;
-  top: -2px;
-  right: -2px;
+  top: -4px;
+  right: -4px;
   background: #ef4444;
   color: white;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
-  width: 20px;
-  height: 20px;
+  min-width: 18px;
+  height: 18px;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -317,20 +367,14 @@ onMounted(() => {
 }
 
 @keyframes pulse {
-  0% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.1);
-  }
-  100% {
-    transform: scale(1);
-  }
+  0% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+  100% { transform: scale(1); }
 }
 
 /* ===== THEME TOGGLE ===== */
 .theme-toggle {
-  font-size: 1.3rem;
+  font-size: 1.2rem;
   color: var(--text-primary);
 }
 
@@ -362,11 +406,11 @@ onMounted(() => {
   display: none;
   flex-direction: column;
   padding: 16px 0;
-  gap: 8px;
+  gap: 4px;
 }
 
 .mobile-link {
-  padding: 12px 16px;
+  padding: 10px 16px;
   border-radius: var(--radius-sm);
   text-decoration: none;
   color: var(--text-secondary);
@@ -375,11 +419,12 @@ onMounted(() => {
   background: none;
   border: none;
   text-align: left;
-  font-size: 1rem;
+  font-size: 0.95rem;
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  width: 100%;
 }
 
 .mobile-link:hover {
@@ -397,7 +442,7 @@ onMounted(() => {
   color: white;
   font-size: 11px;
   font-weight: 700;
-  padding: 1px 8px;
+  padding: 1px 10px;
   border-radius: 50px;
   margin-left: auto;
 }
@@ -410,6 +455,21 @@ onMounted(() => {
 
 .mobile-theme-toggle i {
   font-size: 1.2rem;
+}
+
+.mobile-user-section {
+  border-top: 1px solid var(--border-color);
+  margin-top: 8px;
+  padding-top: 8px;
+}
+
+.mobile-logout {
+  color: #ef4444 !important;
+}
+
+.mobile-logout:hover {
+  background: rgba(239, 68, 68, 0.1) !important;
+  color: #dc2626 !important;
 }
 
 .mobile-login {
@@ -450,12 +510,21 @@ onMounted(() => {
   }
 }
 
-/* ===== DARK MODE BADGE ===== */
+/* ===== DARK MODE ===== */
 html.dark .cart-badge {
   background: #ef4444;
 }
 
 html.dark .mobile-badge {
   background: #ef4444;
+}
+
+html.dark .mobile-logout {
+  color: #f87171 !important;
+}
+
+html.dark .mobile-logout:hover {
+  background: rgba(239, 68, 68, 0.15) !important;
+  color: #fca5a5 !important;
 }
 </style>

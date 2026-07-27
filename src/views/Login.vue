@@ -57,6 +57,12 @@
               <a href="#" class="forgot-password" @click.prevent="forgotPassword">Forgot Password?</a>
             </div>
 
+            <!-- Error Message -->
+            <div v-if="errorMessage" class="error-message">
+              <i class="bi bi-exclamation-circle"></i>
+              {{ errorMessage }}
+            </div>
+
             <!-- Submit Button -->
             <button type="submit" class="btn-primary-modern login-btn" :disabled="isLoading">
               <span v-if="isLoading">
@@ -135,12 +141,14 @@
 <script setup>
 import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
+import api from '../services/api'
 
 const router = useRouter()
 
 // ===== STATE =====
 const isLoading = ref(false)
 const showPassword = ref(false)
+const errorMessage = ref('')
 
 const form = reactive({
   email: '',
@@ -149,56 +157,64 @@ const form = reactive({
 })
 
 // ===== METHODS =====
-const handleLogin = () => {
+const handleLogin = async () => {
   // Validate
   if (!form.email || !form.password) {
-    alert('❌ Please fill in all fields!')
+    errorMessage.value = 'Please fill in all fields!'
     return
   }
 
+  errorMessage.value = ''
   isLoading.value = true
 
-  // Simulate API call
-  setTimeout(() => {
-    // Check if user exists in localStorage
-    const savedUser = localStorage.getItem('shopsphere_user')
-    
-    if (savedUser) {
-      const user = JSON.parse(savedUser)
-      // In a real app, you'd check password here
-      // For demo, we just check if email matches
-      if (form.email === user.email) {
-        // Update user with login time
-        user.lastLogin = new Date().toISOString()
-        localStorage.setItem('shopsphere_user', JSON.stringify(user))
-        
-        // Dispatch auth event
-        window.dispatchEvent(new CustomEvent('auth-changed'))
-        
-        isLoading.value = false
-        alert('✅ Login successful! Welcome back!')
-        router.push('/')
-      } else {
-        isLoading.value = false
-        alert('❌ User not found. Please check your email or register first.')
-      }
-    } else {
-      // No user found - create demo user and login
-      const demoUser = {
-        name: 'Demo User',
-        email: form.email,
-        lastLogin: new Date().toISOString()
-      }
-      localStorage.setItem('shopsphere_user', JSON.stringify(demoUser))
+  try {
+    const response = await api.post('/login', {
+      email: form.email,
+      password: form.password
+    })
+
+    if (response.data.success) {
+      // Save token and user data
+      localStorage.setItem('token', response.data.token)
+      localStorage.setItem('user', JSON.stringify(response.data.user))
       
       // Dispatch auth event
       window.dispatchEvent(new CustomEvent('auth-changed'))
       
       isLoading.value = false
-      alert('✅ Login successful! Welcome to ShopSphere!')
+      
+      // Show success message
+      alert('✅ Login successful! Welcome back, ' + response.data.user.name + '!')
+      
+      // Redirect to home
       router.push('/')
     }
-  }, 1500)
+  } catch (error) {
+    isLoading.value = false
+    
+    if (error.response) {
+      // Server responded with error
+      if (error.response.status === 401) {
+        errorMessage.value = 'Invalid email or password. Please try again.'
+      } else if (error.response.status === 422) {
+        // Validation errors
+        const errors = error.response.data.errors
+        if (errors) {
+          errorMessage.value = Object.values(errors).flat()[0]
+        } else {
+          errorMessage.value = 'Please check your input and try again.'
+        }
+      } else {
+        errorMessage.value = error.response.data?.message || 'Login failed. Please try again.'
+      }
+    } else if (error.request) {
+      // No response from server
+      errorMessage.value = 'Cannot connect to server. Please make sure the backend is running.'
+    } else {
+      // Other errors
+      errorMessage.value = 'An unexpected error occurred. Please try again.'
+    }
+  }
 }
 
 const googleLogin = () => {
@@ -268,6 +284,24 @@ const forgotPassword = () => {
 .login-header p {
   color: var(--text-secondary);
   font-size: 1rem;
+}
+
+/* ===== ERROR MESSAGE ===== */
+.error-message {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: #fee2e2;
+  border: 1px solid #fecaca;
+  border-radius: var(--radius-sm);
+  color: #dc2626;
+  font-size: 0.9rem;
+}
+
+.error-message i {
+  font-size: 1.2rem;
+  flex-shrink: 0;
 }
 
 /* ===== FORM ===== */
