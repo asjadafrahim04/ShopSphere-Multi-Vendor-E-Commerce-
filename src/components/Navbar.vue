@@ -312,6 +312,51 @@ const updateWishlistCount = async () => {
   }
 }
 
+// ===== FORCE REFRESH COUNTS =====
+const forceRefreshCounts = async () => {
+  console.log('🔄 Force refreshing counts...')
+  
+  const token = localStorage.getItem('token')
+  if (token) {
+    try {
+      const [cartResponse, wishlistResponse] = await Promise.all([
+        cartApi.getCartTotal(),
+        wishlistApi.getWishlist()
+      ])
+      
+      if (cartResponse.data.success) {
+        cartCount.value = cartResponse.data.data.count || 0
+        console.log('✅ Cart count from API:', cartCount.value)
+      }
+      if (wishlistResponse.data.success) {
+        wishlistCount.value = wishlistResponse.data.data.count || 0
+        console.log('✅ Wishlist count from API:', wishlistCount.value)
+      }
+      return
+    } catch (error) {
+      console.log('⚠️ API refresh failed, using localStorage')
+    }
+  }
+  
+  // Fallback to localStorage
+  const savedCart = localStorage.getItem('shopsphere_cart')
+  if (savedCart) {
+    const items = JSON.parse(savedCart)
+    cartCount.value = items.reduce((sum, item) => sum + item.quantity, 0)
+  } else {
+    cartCount.value = 0
+  }
+  
+  const savedWishlist = localStorage.getItem('shopsphere_wishlist')
+  if (savedWishlist) {
+    const items = JSON.parse(savedWishlist)
+    wishlistCount.value = items.length
+  } else {
+    wishlistCount.value = 0
+  }
+  console.log('✅ Counts from localStorage:', { cart: cartCount.value, wishlist: wishlistCount.value })
+}
+
 // ===== NAVIGATION FUNCTIONS =====
 const goToCart = () => router.push('/cart')
 const goToWishlist = () => router.push('/wishlist')
@@ -347,25 +392,47 @@ onMounted(() => {
   updateCartCount()
   updateWishlistCount()
   
+  // Force refresh after 500ms
+  setTimeout(forceRefreshCounts, 500)
+  
+  // ===== FIX: Refresh when page becomes visible =====
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+      console.log('🔄 Page became visible, refreshing counts...')
+      forceRefreshCounts()
+    }
+  })
+  
   window.addEventListener('storage', () => { 
     updateCartCount()
     updateWishlistCount()
     checkAuth() 
   })
   
+  // Listen for cart-updated event with count
   window.addEventListener('cart-updated', (event) => {
+    console.log('📦 Cart updated event received:', event.detail)
     if (event.detail?.count !== undefined) {
       cartCount.value = event.detail.count
     } else {
-      updateCartCount()
+      forceRefreshCounts()
     }
   })
   
-  window.addEventListener('wishlist-updated', () => {
-    updateWishlistCount()
+  // Listen for wishlist-updated event with count
+  window.addEventListener('wishlist-updated', (event) => {
+    console.log('❤️ Wishlist updated event received:', event.detail)
+    if (event.detail?.count !== undefined) {
+      wishlistCount.value = event.detail.count
+    } else {
+      forceRefreshCounts()
+    }
   })
   
-  window.addEventListener('auth-changed', checkAuth)
+  window.addEventListener('auth-changed', () => {
+    checkAuth()
+    forceRefreshCounts()
+  })
 })
 </script>
 

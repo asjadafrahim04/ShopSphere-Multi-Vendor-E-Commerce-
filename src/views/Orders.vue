@@ -7,16 +7,29 @@
         <p class="page-subtitle">Track and manage your orders</p>
       </div>
 
+      <!-- Loading State -->
+      <div v-if="isLoading" class="loading-state">
+        <div class="spinner"></div>
+        <p>Loading your orders...</p>
+      </div>
+
+      <!-- Error State -->
+      <div v-else-if="error" class="error-state">
+        <i class="bi bi-exclamation-circle" style="font-size: 3rem; color: #ef4444;"></i>
+        <p>{{ error }}</p>
+        <button class="btn-primary-modern" @click="loadOrders">Try Again</button>
+      </div>
+
       <!-- Orders List -->
-      <div v-if="orders.length > 0" class="orders-list">
+      <div v-else-if="orders.length > 0" class="orders-list">
         <div v-for="order in sortedOrders" :key="order.id" class="order-card">
           <!-- Order Header -->
           <div class="order-header">
             <div class="order-info">
-              <span class="order-number">Order #{{ order.orderNumber }}</span>
+              <span class="order-number">Order #{{ order.order_number }}</span>
               <span class="order-date">
                 <i class="bi bi-calendar3"></i>
-                {{ order.date }}
+                {{ formatDate(order.created_at) }}
               </span>
             </div>
             <div class="order-status">
@@ -26,22 +39,11 @@
             </div>
           </div>
 
-          <!-- Order Items with Images -->
+          <!-- Order Items -->
           <div class="order-items">
             <div v-for="item in order.items" :key="item.id" class="order-item">
-              <div class="item-image">
-                <img 
-                  v-if="item.image" 
-                  :src="item.image" 
-                  :alt="item.name"
-                  class="order-item-img"
-                  loading="lazy"
-                  @error="handleImageError"
-                />
-                <span v-else class="item-emoji">{{ item.emoji || '📦' }}</span>
-              </div>
               <div class="item-details">
-                <span class="item-name">{{ item.name }}</span>
+                <span class="item-name">{{ item.name || item.product?.name || 'Product' }}</span>
                 <span class="item-quantity">Qty: {{ item.quantity }}</span>
               </div>
               <span class="item-price">${{ (item.price * item.quantity).toFixed(2) }}</span>
@@ -52,7 +54,7 @@
           <div class="order-footer">
             <div class="order-total">
               <span>Total:</span>
-              <span class="total-amount">${{ order.total.toFixed(2) }}</span>
+              <span class="total-amount">${{ parseFloat(order.total).toFixed(2) }}</span>
             </div>
             <div class="order-actions">
               <button class="btn-outline-modern" @click="viewOrderDetails(order.id)">
@@ -84,11 +86,14 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { orderApi } from '@/services/api'
 
 const router = useRouter()
 
 // ===== STATE =====
 const orders = ref([])
+const isLoading = ref(true)
+const error = ref(null)
 
 // ===== COMPUTED =====
 const sortedOrders = computed(() => {
@@ -96,101 +101,91 @@ const sortedOrders = computed(() => {
 })
 
 // ===== METHODS =====
-const loadOrders = () => {
-  const savedOrders = localStorage.getItem('shopsphere_orders')
-  if (savedOrders) {
-    orders.value = JSON.parse(savedOrders)
-  } else {
-    // Add some demo orders with images
-    orders.value = [
-      {
-        id: 1,
-        orderNumber: 'SPH-123456-A7B9',
-        date: '15/06/2024',
-        total: 179.97,
-        status: 'delivered',
-        items: [
-          { 
-            id: 1, 
-            name: 'Wireless Noise-Cancelling Headphones', 
-            price: 49.99, 
-            quantity: 1, 
-            emoji: '🎧', 
-            imageBg: '#e8ecf1',
-            image: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?q=80&w=870&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D'
-          },
-          { 
-            id: 2, 
-            name: 'Premium Leather Jacket', 
-            price: 89.99, 
-            quantity: 1, 
-            emoji: '🧥', 
-            imageBg: '#f8f0e8',
-            image: 'https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=870&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D'
-          },
-          { 
-            id: 3, 
-            name: 'Smart Coffee Maker Pro', 
-            price: 39.99, 
-            quantity: 1, 
-            emoji: '☕', 
-            imageBg: '#f0e8e0',
-            image: 'https://images.unsplash.com/photo-1517668808822-9f02a4bcc53a?q=80&w=870&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D'
-          }
-        ]
-      },
-      {
-        id: 2,
-        orderNumber: 'SPH-789012-C3D5',
-        date: '10/06/2024',
-        total: 199.99,
-        status: 'shipped',
-        items: [
-          { 
-            id: 4, 
-            name: 'Fitness Smart Watch', 
-            price: 199.99, 
-            quantity: 1, 
-            emoji: '⌚', 
-            imageBg: '#e0e8f0',
-            image: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?q=80&w=870&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D'
-          }
-        ]
-      },
-      {
-        id: 3,
-        orderNumber: 'SPH-345678-E1F2',
-        date: '05/06/2024',
-        total: 129.99,
-        status: 'pending',
-        items: [
-          { 
-            id: 6, 
-            name: 'E-Reader Paperwhite', 
-            price: 129.99, 
-            quantity: 1, 
-            emoji: '📚', 
-            imageBg: '#e8f0f8',
-            image: 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?q=80&w=870&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D'
-          }
-        ]
-      }
-    ]
-    saveOrders()
+const loadOrders = async () => {
+  isLoading.value = true
+  error.value = null
+  
+  try {
+    const token = localStorage.getItem('token')
+    console.log('🔑 Token:', token ? 'Exists' : 'Missing')
+    
+    if (!token) {
+      console.log('⚠️ No token found, using localStorage')
+      loadFromLocalStorage()
+      isLoading.value = false
+      return
+    }
+    
+    console.log('📡 Fetching orders from API...')
+    const response = await orderApi.getOrders()
+    console.log('📦 API Response:', response.data)
+    
+    if (response.data.success) {
+      orders.value = response.data.data || []
+      console.log('✅ Orders loaded:', orders.value.length)
+    } else {
+      console.log('⚠️ API returned error, using localStorage')
+      loadFromLocalStorage()
+    }
+  } catch (err) {
+    console.error('❌ Error loading orders:', err)
+    error.value = 'Failed to load orders. Please try again.'
+    loadFromLocalStorage()
+  } finally {
+    isLoading.value = false
   }
 }
 
-const saveOrders = () => {
-  localStorage.setItem('shopsphere_orders', JSON.stringify(orders.value))
+const loadFromLocalStorage = () => {
+  const savedOrders = localStorage.getItem('shopsphere_orders')
+  if (savedOrders) {
+    orders.value = JSON.parse(savedOrders)
+    console.log('📦 Orders from localStorage:', orders.value.length)
+  } else {
+    orders.value = []
+    console.log('📦 No orders in localStorage')
+  }
 }
 
-const handleImageError = (e) => {
-  e.target.style.display = 'none'
-  const parent = e.target.parentElement
-  const fallback = document.createElement('span')
-  fallback.className = 'item-emoji'
-  fallback.textContent = '📦'
-  parent.appendChild(fallback)
+const cancelOrder = async (orderId) => {
+  if (!confirm('Are you sure you want to cancel this order?')) return
+
+  try {
+    const token = localStorage.getItem('token')
+    
+    if (token) {
+      const response = await orderApi.cancelOrder(orderId)
+      if (response.data.success) {
+        alert('Order cancelled successfully!')
+        await loadOrders()
+        return
+      }
+    }
+    
+    // Fallback to localStorage
+    const order = orders.value.find(o => o.id === orderId)
+    if (order) {
+      order.status = 'cancelled'
+      localStorage.setItem('shopsphere_orders', JSON.stringify(orders.value))
+      alert('Order cancelled successfully!')
+    }
+  } catch (error) {
+    console.error('Error cancelling order:', error)
+    alert('Failed to cancel order. Please try again.')
+  }
+}
+
+const viewOrderDetails = (orderId) => {
+  router.push(`/order-confirmation/${orderId}`)
+}
+
+const formatDate = (date) => {
+  if (!date) return 'N/A'
+  return new Date(date).toLocaleDateString('en-BD', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric'
+  })
 }
 
 const getStatusLabel = (status) => {
@@ -199,7 +194,8 @@ const getStatusLabel = (status) => {
     processing: 'Processing',
     shipped: 'Shipped',
     delivered: 'Delivered',
-    cancelled: 'Cancelled'
+    cancelled: 'Cancelled',
+    refunded: 'Refunded'
   }
   return labels[status] || status
 }
@@ -210,24 +206,10 @@ const getStatusClass = (status) => {
     processing: 'status-processing',
     shipped: 'status-shipped',
     delivered: 'status-delivered',
-    cancelled: 'status-cancelled'
+    cancelled: 'status-cancelled',
+    refunded: 'status-refunded'
   }
   return classes[status] || 'status-pending'
-}
-
-const viewOrderDetails = (orderId) => {
-  router.push(`/orders/${orderId}`)
-}
-
-const cancelOrder = (orderId) => {
-  if (confirm('Are you sure you want to cancel this order?')) {
-    const order = orders.value.find(o => o.id === orderId)
-    if (order) {
-      order.status = 'cancelled'
-      saveOrders()
-      alert('Order cancelled successfully!')
-    }
-  }
 }
 
 const continueShopping = () => {
@@ -247,7 +229,6 @@ onMounted(() => {
   min-height: 100vh;
 }
 
-/* ===== PAGE HEADER ===== */
 .page-header {
   margin-bottom: 40px;
 }
@@ -264,14 +245,50 @@ onMounted(() => {
   font-size: 1.1rem;
 }
 
-/* ===== ORDERS LIST ===== */
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+  gap: 20px;
+}
+
+.spinner {
+  width: 48px;
+  height: 48px;
+  border: 4px solid var(--border-color);
+  border-top: 4px solid #667eea;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+  gap: 16px;
+  text-align: center;
+}
+
+.error-state p {
+  color: var(--text-secondary);
+  font-size: 1.05rem;
+}
+
 .orders-list {
   display: flex;
   flex-direction: column;
   gap: 24px;
 }
 
-/* ===== ORDER CARD ===== */
 .order-card {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
@@ -284,7 +301,6 @@ onMounted(() => {
   box-shadow: var(--shadow-hover);
 }
 
-/* ===== ORDER HEADER ===== */
 .order-header {
   display: flex;
   justify-content: space-between;
@@ -317,7 +333,6 @@ onMounted(() => {
   gap: 6px;
 }
 
-/* ===== STATUS BADGE ===== */
 .status-badge {
   padding: 4px 16px;
   border-radius: 50px;
@@ -352,7 +367,11 @@ onMounted(() => {
   color: #dc2626;
 }
 
-/* ===== ORDER ITEMS WITH IMAGES ===== */
+.status-refunded {
+  background: #f3e8ff;
+  color: #7c3aed;
+}
+
 .order-items {
   padding: 16px 20px;
   display: flex;
@@ -362,8 +381,8 @@ onMounted(() => {
 
 .order-item {
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 16px;
   padding: 8px 0;
   border-bottom: 1px solid var(--border-color);
 }
@@ -372,30 +391,7 @@ onMounted(() => {
   border-bottom: none;
 }
 
-.item-image {
-  width: 50px;
-  height: 50px;
-  border-radius: var(--radius-sm);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--bg-secondary);
-  flex-shrink: 0;
-  overflow: hidden;
-}
-
-.order-item-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.item-emoji {
-  font-size: 1.5rem;
-}
-
 .item-details {
-  flex: 1;
   display: flex;
   flex-direction: column;
 }
@@ -415,7 +411,6 @@ onMounted(() => {
   color: var(--text-primary);
 }
 
-/* ===== ORDER FOOTER ===== */
 .order-footer {
   display: flex;
   justify-content: space-between;
@@ -455,7 +450,6 @@ onMounted(() => {
   font-size: 0.85rem;
 }
 
-/* ===== EMPTY ORDERS ===== */
 .empty-orders {
   display: flex;
   justify-content: center;
@@ -482,35 +476,33 @@ onMounted(() => {
   font-size: 1.05rem;
 }
 
-/* ===== DARK MODE ===== */
 @media (prefers-color-scheme: dark) {
   .status-pending {
     background: rgba(251, 191, 36, 0.2);
     color: #fbbf24;
   }
-  
   .status-processing {
     background: rgba(59, 130, 246, 0.2);
     color: #60a5fa;
   }
-  
   .status-shipped {
     background: rgba(99, 102, 241, 0.2);
     color: #818cf8;
   }
-  
   .status-delivered {
     background: rgba(52, 211, 153, 0.2);
     color: #34d399;
   }
-  
   .status-cancelled {
     background: rgba(239, 68, 68, 0.2);
     color: #f87171;
   }
+  .status-refunded {
+    background: rgba(192, 132, 252, 0.2);
+    color: #a78bfa;
+  }
 }
 
-/* ===== RESPONSIVE ===== */
 @media (max-width: 768px) {
   .orders-page {
     padding: 20px 0 60px;
@@ -549,15 +541,7 @@ onMounted(() => {
 @media (max-width: 480px) {
   .order-item {
     flex-wrap: wrap;
-  }
-
-  .item-image {
-    width: 40px;
-    height: 40px;
-  }
-
-  .item-emoji {
-    font-size: 1.2rem;
+    gap: 4px;
   }
 
   .item-price {

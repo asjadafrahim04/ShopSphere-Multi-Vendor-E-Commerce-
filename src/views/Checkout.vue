@@ -7,8 +7,14 @@
         <p class="page-subtitle">Complete your order</p>
       </div>
 
+      <!-- Loading State -->
+      <div v-if="isLoading" class="loading-state">
+        <div class="spinner"></div>
+        <p>Loading your cart...</p>
+      </div>
+
       <!-- Checkout Content -->
-      <div v-if="cartItems.length > 0" class="checkout-grid">
+      <div v-else-if="cartItems.length > 0" class="checkout-grid">
         <!-- Left: Billing & Shipping -->
         <div class="checkout-form">
           <!-- Shipping Information -->
@@ -94,7 +100,6 @@
               Payment Method
             </h3>
             
-            <!-- Payment Options -->
             <div class="payment-options">
               <!-- Mobile Banking -->
               <div class="payment-group">
@@ -102,7 +107,6 @@
                   <i class="bi bi-phone"></i> Mobile Banking
                 </label>
                 <div class="payment-grid">
-                  <!-- bKash -->
                   <div 
                     class="payment-option" 
                     :class="{ active: paymentMethod === 'bkash' }"
@@ -110,12 +114,10 @@
                   >
                     <input type="radio" id="bkash" value="bkash" v-model="paymentMethod" />
                     <label for="bkash">
-                      <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='%23E2136E'/%3E%3Ctext x='50' y='58' font-family='Arial' font-size='28' font-weight='bold' fill='white' text-anchor='middle'%3EbKash%3C/text%3E%3C/svg%3E" alt="bKash" class="payment-logo" />
+                      <span class="payment-icon">📱</span>
                       <span>bKash</span>
                     </label>
                   </div>
-
-                  <!-- Nagad -->
                   <div 
                     class="payment-option" 
                     :class="{ active: paymentMethod === 'nagad' }"
@@ -123,12 +125,10 @@
                   >
                     <input type="radio" id="nagad" value="nagad" v-model="paymentMethod" />
                     <label for="nagad">
-                      <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='%23FF6B00'/%3E%3Ctext x='50' y='58' font-family='Arial' font-size='22' font-weight='bold' fill='white' text-anchor='middle'%3ENagad%3C/text%3E%3C/svg%3E" alt="Nagad" class="payment-logo" />
+                      <span class="payment-icon">📱</span>
                       <span>Nagad</span>
                     </label>
                   </div>
-
-                  <!-- Rocket -->
                   <div 
                     class="payment-option" 
                     :class="{ active: paymentMethod === 'rocket' }"
@@ -136,7 +136,7 @@
                   >
                     <input type="radio" id="rocket" value="rocket" v-model="paymentMethod" />
                     <label for="rocket">
-                      <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='%23F26522'/%3E%3Ctext x='50' y='55' font-family='Arial' font-size='18' font-weight='bold' fill='white' text-anchor='middle'%3ERocket%3C/text%3E%3C/svg%3E" alt="Rocket" class="payment-logo" />
+                      <span class="payment-icon">📱</span>
                       <span>Rocket</span>
                     </label>
                   </div>
@@ -157,10 +157,7 @@
                     <input type="radio" id="cod" value="cod" v-model="paymentMethod" />
                     <label for="cod">
                       <span class="payment-icon-large">💵</span>
-                      <div class="payment-label">
-                        <span class="payment-name">Cash on Delivery</span>
-                        <span class="payment-sub">Pay when you receive</span>
-                      </div>
+                      <span>Cash on Delivery</span>
                     </label>
                   </div>
                 </div>
@@ -179,120 +176,29 @@
                   >
                     <input type="radio" id="card" value="card" v-model="paymentMethod" />
                     <label for="card">
-                      <div class="card-logos">
-                        <span class="card-brand visa">Visa</span>
-                        <span class="card-brand mastercard">Mastercard</span>
-                        <span class="card-brand amex">Amex</span>
-                      </div>
-                      <div class="payment-label">
-                        <span class="payment-name">Credit / Debit Card</span>
-                        <span class="payment-sub">Visa, Mastercard, Amex</span>
-                      </div>
+                      <span class="card-icons">💳</span>
+                      <span>Visa / Mastercard / Amex</span>
                     </label>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Mobile Banking Details -->
-            <div v-if="['bkash', 'nagad', 'rocket'].includes(paymentMethod)" class="payment-details">
-              <div class="payment-info-box">
-                <div class="payment-header">
-                  <img 
-                    :src="`data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='${paymentMethod === 'bkash' ? '%23E2136E' : paymentMethod === 'nagad' ? '%23FF6B00' : '%23F26522'}'/%3E%3Ctext x='50' y='58' font-family='Arial' font-size='${paymentMethod === 'bkash' ? '28' : '22'}' font-weight='bold' fill='white' text-anchor='middle'%3E${paymentMethod === 'bkash' ? 'bKash' : paymentMethod === 'nagad' ? 'Nagad' : 'Rocket'}%3C/text%3E%3C/svg%3E`" 
-                    :alt="paymentMethod" 
-                    class="detail-logo" 
-                  />
-                  <h4>Pay with {{ paymentMethod === 'bkash' ? 'bKash' : paymentMethod === 'nagad' ? 'Nagad' : 'Rocket' }}</h4>
-                </div>
-                <p>Please send the amount to the following number:</p>
-                <div class="merchant-number">
-                  <span class="label">Merchant {{ paymentMethod.toUpperCase() }} Number:</span>
-                  <span class="number">{{ merchantNumbers[paymentMethod] }}</span>
-                  <button class="copy-btn" @click="copyNumber(paymentMethod)">
-                    <i class="bi bi-copy"></i>
-                  </button>
-                </div>
-                <div class="form-group">
-                  <label>Your {{ paymentMethod.toUpperCase() }} Number</label>
-                  <input type="text" v-model="mobileBanking.number" :placeholder="`Enter your ${paymentMethod} number`" />
-                </div>
-                <div class="form-group">
-                  <label>Transaction ID</label>
-                  <input type="text" v-model="mobileBanking.transactionId" placeholder="Enter transaction ID" />
-                </div>
-                <div class="form-group">
-                  <label>Amount to Send</label>
-                  <input type="text" :value="'$' + total.toFixed(2)" disabled class="amount-display" />
-                </div>
-              </div>
-            </div>
-
-            <!-- Card Details -->
-            <div v-if="paymentMethod === 'card'" class="payment-details">
-              <div class="payment-info-box card-box">
-                <div class="payment-header">
-                  <span class="payment-icon-large">💳</span>
-                  <h4>Card Details</h4>
-                </div>
-                <div class="form-group">
-                  <label>Card Number</label>
-                  <input type="text" v-model="cardDetails.number" placeholder="1234 5678 9012 3456" />
-                </div>
-                <div class="form-row">
-                  <div class="form-group">
-                    <label>Expiry Date</label>
-                    <input type="text" v-model="cardDetails.expiry" placeholder="MM/YY" />
-                  </div>
-                  <div class="form-group">
-                    <label>CVV</label>
-                    <input type="password" v-model="cardDetails.cvv" placeholder="123" />
-                  </div>
-                </div>
-                <div class="form-group">
-                  <label>Name on Card</label>
-                  <input type="text" v-model="cardDetails.name" placeholder="John Doe" />
-                </div>
-                <div class="card-brands-accepted">
-                  <span class="accepted-label">We accept:</span>
-                  <span class="card-brand visa">Visa</span>
-                  <span class="card-brand mastercard">Mastercard</span>
-                  <span class="card-brand amex">Amex</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- COD Details -->
-            <div v-if="paymentMethod === 'cod'" class="payment-details">
-              <div class="payment-info-box cod-box">
-                <div class="cod-icon">💵</div>
-                <h4>Cash on Delivery</h4>
-                <p>Pay when you receive your package at your doorstep.</p>
-                <div class="cod-note">
-                  <i class="bi bi-info-circle"></i>
-                  <span>No additional payment required now. Pay in cash when the delivery arrives.</span>
-                </div>
-                <div class="cod-benefits">
-                  <div class="benefit">
-                    <i class="bi bi-check-circle-fill"></i>
-                    <span>No advance payment</span>
-                  </div>
-                  <div class="benefit">
-                    <i class="bi bi-check-circle-fill"></i>
-                    <span>Inspect before payment</span>
-                  </div>
-                  <div class="benefit">
-                    <i class="bi bi-check-circle-fill"></i>
-                    <span>100% secure</span>
                   </div>
                 </div>
               </div>
             </div>
           </div>
 
+          <!-- Error Message -->
+          <div v-if="errorMessage" class="error-message">
+            <i class="bi bi-exclamation-circle"></i>
+            {{ errorMessage }}
+          </div>
+
           <!-- Place Order Button -->
-          <button class="btn-primary-modern place-order-btn" @click="placeOrder">
-            <i class="bi bi-check-circle me-2"></i>Place Order
+          <button class="btn-primary-modern place-order-btn" @click="placeOrder" :disabled="isSubmitting">
+            <span v-if="isSubmitting">
+              <i class="bi bi-arrow-repeat spin"></i> Placing Order...
+            </span>
+            <span v-else>
+              <i class="bi bi-check-circle me-2"></i>Place Order
+            </span>
           </button>
         </div>
 
@@ -300,7 +206,7 @@
         <div class="order-summary">
           <h3>Order Summary</h3>
           
-          <!-- Cart Items with Images -->
+          <!-- Cart Items -->
           <div class="summary-items">
             <div v-for="item in cartItems" :key="item.id" class="summary-item">
               <div class="item-info">
@@ -332,7 +238,7 @@
             </div>
             <div class="total-row">
               <span>Shipping</span>
-              <span>{{ shipping > 0 ? '$' + shipping.toFixed(2) : 'Free' }}</span>
+              <span>{{ shippingCost > 0 ? '$' + shippingCost.toFixed(2) : 'Free' }}</span>
             </div>
             <div class="total-row">
               <span>Tax (8%)</span>
@@ -380,11 +286,15 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { orderApi, cartApi } from '@/services/api'
 
 const router = useRouter()
 
 // ===== STATE =====
 const cartItems = ref([])
+const isLoading = ref(true)
+const isSubmitting = ref(false)
+const errorMessage = ref('')
 
 // ===== SHIPPING INFO =====
 const shippingInfo = ref({
@@ -400,30 +310,13 @@ const shippingInfo = ref({
 
 // ===== PAYMENT =====
 const paymentMethod = ref('cod')
-const mobileBanking = ref({
-  number: '',
-  transactionId: ''
-})
-const cardDetails = ref({
-  number: '',
-  expiry: '',
-  cvv: '',
-  name: ''
-})
-
-// ===== MERCHANT NUMBERS =====
-const merchantNumbers = {
-  bkash: '017XXXXXXXX',
-  nagad: '016XXXXXXXX',
-  rocket: '018XXXXXXXX'
-}
 
 // ===== COMPUTED =====
 const subtotal = computed(() => {
   return cartItems.value.reduce((sum, item) => sum + (item.price * item.quantity), 0)
 })
 
-const shipping = computed(() => {
+const shippingCost = computed(() => {
   if (shippingInfo.value.deliveryArea === 'Inside Dhaka') {
     return 60
   } else if (shippingInfo.value.deliveryArea === 'Outside Dhaka') {
@@ -439,14 +332,117 @@ const tax = computed(() => {
 })
 
 const total = computed(() => {
-  return subtotal.value + shipping.value + tax.value
+  return subtotal.value + shippingCost.value + tax.value
 })
 
 // ===== METHODS =====
-const loadCart = () => {
-  const savedCart = localStorage.getItem('shopsphere_cart')
-  if (savedCart) {
-    cartItems.value = JSON.parse(savedCart)
+const loadCart = async () => {
+  isLoading.value = true
+  try {
+    const token = localStorage.getItem('token')
+    if (token) {
+      const response = await cartApi.getCart()
+      if (response.data.success) {
+        const cartData = response.data.data
+        cartItems.value = cartData.items || []
+      }
+    } else {
+      // Fallback to localStorage
+      const savedCart = localStorage.getItem('shopsphere_cart')
+      if (savedCart) {
+        cartItems.value = JSON.parse(savedCart)
+      }
+    }
+  } catch (error) {
+    console.error('Error loading cart:', error)
+    // Fallback to localStorage
+    const savedCart = localStorage.getItem('shopsphere_cart')
+    if (savedCart) {
+      cartItems.value = JSON.parse(savedCart)
+    }
+  } finally {
+    isLoading.value = false
+  }
+}
+
+const placeOrder = async () => {
+  // Validate shipping info
+  const required = ['fullName', 'email', 'phone', 'address', 'city', 'district', 'deliveryArea']
+  const missing = required.filter(field => !shippingInfo.value[field])
+  
+  if (missing.length > 0) {
+    errorMessage.value = 'Please fill in all shipping fields'
+    return
+  }
+
+  if (!paymentMethod.value) {
+    errorMessage.value = 'Please select a payment method'
+    return
+  }
+
+  isSubmitting.value = true
+  errorMessage.value = ''
+
+  try {
+    const token = localStorage.getItem('token')
+    
+    if (token) {
+      // Logged in - use API
+      const response = await orderApi.createOrder({
+        shipping_address: {
+          full_name: shippingInfo.value.fullName,
+          email: shippingInfo.value.email,
+          phone: shippingInfo.value.phone,
+          address: shippingInfo.value.address,
+          city: shippingInfo.value.city,
+          district: shippingInfo.value.district,
+          postal_code: shippingInfo.value.postalCode,
+          delivery_area: shippingInfo.value.deliveryArea,
+        },
+        payment_method: paymentMethod.value,
+        notes: ''
+      })
+
+      if (response.data.success) {
+        // Clear cart
+        localStorage.removeItem('shopsphere_cart')
+        window.dispatchEvent(new Event('storage'))
+        window.dispatchEvent(new CustomEvent('cart-updated'))
+        
+        // Redirect to order confirmation
+        router.push(`/order-confirmation/${response.data.data.order.id}`)
+      }
+    } else {
+      // Not logged in - use localStorage (fallback)
+      const order = {
+        id: Date.now(),
+        items: cartItems.value,
+        shipping: shippingInfo.value,
+        paymentMethod: paymentMethod.value,
+        subtotal: subtotal.value,
+        shippingCost: shippingCost.value,
+        tax: tax.value,
+        total: total.value,
+        status: 'pending',
+        date: new Date().toLocaleDateString('en-BD', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+        orderNumber: 'SPH-' + Date.now().toString().slice(-6) + '-' + Math.random().toString(36).substr(2, 4).toUpperCase()
+      }
+
+      const orders = JSON.parse(localStorage.getItem('shopsphere_orders') || '[]')
+      orders.push(order)
+      localStorage.setItem('shopsphere_orders', JSON.stringify(orders))
+
+      localStorage.removeItem('shopsphere_cart')
+      window.dispatchEvent(new Event('storage'))
+      window.dispatchEvent(new CustomEvent('cart-updated'))
+
+      router.push(`/order-confirmation/${order.id}`)
+    }
+  } catch (error) {
+    console.error('Error placing order:', error)
+    errorMessage.value = error.response?.data?.message || 'Failed to place order. Please try again.'
+  } finally {
+    isSubmitting.value = false
   }
 }
 
@@ -457,84 +453,6 @@ const handleImageError = (e) => {
   fallback.className = 'item-emoji'
   fallback.textContent = '📦'
   parent.appendChild(fallback)
-}
-
-const copyNumber = (method) => {
-  const number = merchantNumbers[method]
-  navigator.clipboard.writeText(number)
-  alert(`📋 Copied ${method.toUpperCase()} number: ${number}`)
-}
-
-const placeOrder = () => {
-  const required = ['fullName', 'email', 'phone', 'address', 'city', 'district', 'deliveryArea']
-  const missing = required.filter(field => !shippingInfo.value[field])
-  
-  if (missing.length > 0) {
-    alert('Please fill in all shipping fields')
-    return
-  }
-
-  if (!paymentMethod.value) {
-    alert('Please select a payment method')
-    return
-  }
-
-  if (['bkash', 'nagad', 'rocket'].includes(paymentMethod.value)) {
-    if (!mobileBanking.value.number) {
-      alert(`Please enter your ${paymentMethod.value} number`)
-      return
-    }
-    if (!mobileBanking.value.transactionId) {
-      alert('Please enter the transaction ID')
-      return
-    }
-  }
-
-  if (paymentMethod.value === 'card') {
-    if (!cardDetails.value.number || !cardDetails.value.expiry || !cardDetails.value.cvv || !cardDetails.value.name) {
-      alert('Please fill in all card details')
-      return
-    }
-  }
-
-  const paymentLabels = {
-    bkash: 'bKash',
-    nagad: 'Nagad',
-    rocket: 'Rocket (DBBL)',
-    cod: 'Cash on Delivery',
-    card: 'Credit/Debit Card'
-  }
-
-  const order = {
-    id: Date.now(),
-    items: cartItems.value,
-    shipping: shippingInfo.value,
-    paymentMethod: paymentMethod.value,
-    paymentDetails: paymentMethod.value === 'cod' ? null : {
-      mobileBanking: paymentMethod.value !== 'card' ? mobileBanking.value : null,
-      card: paymentMethod.value === 'card' ? cardDetails.value : null
-    },
-    subtotal: subtotal.value,
-    shippingCost: shipping.value,
-    tax: tax.value,
-    total: total.value,
-    status: 'pending',
-    date: new Date().toLocaleDateString('en-BD', { day: '2-digit', month: '2-digit', year: 'numeric' }),
-    orderNumber: 'SPH-' + Date.now().toString().slice(-6) + '-' + Math.random().toString(36).substr(2, 4).toUpperCase()
-  }
-
-  const orders = JSON.parse(localStorage.getItem('shopsphere_orders') || '[]')
-  orders.push(order)
-  localStorage.setItem('shopsphere_orders', JSON.stringify(orders))
-
-  localStorage.removeItem('shopsphere_cart')
-  window.dispatchEvent(new Event('storage'))
-  window.dispatchEvent(new CustomEvent('cart-updated'))
-
-  const paymentLabel = paymentLabels[paymentMethod.value] || paymentMethod.value
-  alert(`🎉 Order placed successfully!\n\nOrder #${order.orderNumber}\nPayment Method: ${paymentLabel}\nTotal: $${order.total.toFixed(2)}\n\nWe'll send you a confirmation email shortly.`)
-  
-  router.push(`/order-confirmation/${order.id}`)
 }
 
 const continueShopping = () => {
@@ -548,13 +466,36 @@ onMounted(() => {
 </script>
 
 <style scoped>
+/* All existing styles remain the same */
 .checkout-page {
   padding: 40px 0 80px;
   background: var(--bg-primary);
   min-height: 100vh;
 }
 
-/* ===== PAGE HEADER ===== */
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+  gap: 20px;
+}
+
+.spinner {
+  width: 48px;
+  height: 48px;
+  border: 4px solid var(--border-color);
+  border-top: 4px solid #667eea;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
 .page-header {
   margin-bottom: 40px;
 }
@@ -571,14 +512,12 @@ onMounted(() => {
   font-size: 1.1rem;
 }
 
-/* ===== CHECKOUT GRID ===== */
 .checkout-grid {
   display: grid;
   grid-template-columns: 1.5fr 1fr;
   gap: 40px;
 }
 
-/* ===== FORM SECTION ===== */
 .form-section {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
@@ -634,17 +573,6 @@ onMounted(() => {
   box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
 }
 
-.form-group input:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.amount-display {
-  font-weight: 700;
-  color: #667eea !important;
-}
-
-/* ===== PAYMENT OPTIONS ===== */
 .payment-section {
   border: 2px solid var(--border-color);
 }
@@ -717,251 +645,40 @@ onMounted(() => {
   width: 100%;
 }
 
-.payment-logo {
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
-  object-fit: contain;
+.payment-icon {
+  font-size: 1.3rem;
 }
 
 .payment-icon-large {
   font-size: 2rem;
 }
 
-.payment-label {
-  display: flex;
-  flex-direction: column;
-}
-
-.payment-name {
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.payment-sub {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  font-weight: 400;
-}
-
-/* ===== COD OPTION ===== */
-.cod-option {
-  grid-column: 1 / -1;
-}
-
-.cod-option label {
-  justify-content: center;
-}
-
-/* ===== CARD OPTION ===== */
 .card-option {
   grid-column: 1 / -1;
 }
 
-.card-option label {
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
+.cod-option {
+  grid-column: 1 / -1;
 }
 
-.card-logos {
-  display: flex;
-  gap: 8px;
-}
-
-.card-brand {
-  padding: 2px 10px;
-  border-radius: 4px;
-  font-size: 0.7rem;
-  font-weight: 700;
-  text-transform: uppercase;
-}
-
-.card-brand.visa {
-  background: #1a1f71;
-  color: white;
-}
-
-.card-brand.mastercard {
-  background: #eb001b;
-  color: white;
-}
-
-.card-brand.amex {
-  background: #006fcf;
-  color: white;
-}
-
-/* ===== PAYMENT DETAILS ===== */
-.payment-details {
-  margin-top: 16px;
-}
-
-.payment-info-box {
-  background: var(--bg-secondary);
-  border-radius: var(--radius-sm);
-  padding: 20px;
-  border: 1px solid var(--border-color);
-}
-
-.payment-header {
+.error-message {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.detail-logo {
-  width: 40px;
-  height: 40px;
-  border-radius: 8px;
-}
-
-.payment-info-box h4 {
-  font-size: 1.05rem;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0;
-}
-
-.payment-info-box p {
-  color: var(--text-secondary);
-  font-size: 0.95rem;
-  margin-bottom: 12px;
-}
-
-.merchant-number {
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
+  gap: 10px;
   padding: 12px 16px;
-  margin-bottom: 16px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.merchant-number .label {
-  color: var(--text-secondary);
+  background: #fee2e2;
+  border: 1px solid #fecaca;
+  border-radius: var(--radius-sm);
+  color: #dc2626;
   font-size: 0.9rem;
+  margin-bottom: 16px;
 }
 
-.merchant-number .number {
-  font-weight: 700;
-  color: #667eea;
-  font-size: 1.1rem;
-  font-family: monospace;
-  letter-spacing: 1px;
-}
-
-.copy-btn {
-  background: none;
-  border: none;
-  color: #667eea;
-  cursor: pointer;
-  font-size: 1.1rem;
-  padding: 4px 8px;
-  border-radius: 4px;
-  transition: var(--transition);
-}
-
-.copy-btn:hover {
-  background: rgba(102, 126, 234, 0.1);
-}
-
-/* ===== CARD DETAILS ===== */
-.card-box {
-  background: linear-gradient(135deg, #1a1a2e, #16213e);
-  color: white;
-}
-
-.card-box .form-group label {
-  color: rgba(255, 255, 255, 0.7);
-}
-
-.card-box input {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.2);
-  color: white;
-}
-
-.card-box input::placeholder {
-  color: rgba(255, 255, 255, 0.4);
-}
-
-.card-box input:focus {
-  border-color: #667eea;
-  background: rgba(255, 255, 255, 0.15);
-}
-
-.card-brands-accepted {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.accepted-label {
-  color: rgba(255, 255, 255, 0.6);
-  font-size: 0.8rem;
-}
-
-/* ===== COD DETAILS ===== */
-.cod-box {
-  text-align: center;
-  background: rgba(34, 197, 94, 0.05);
-  border-color: rgba(34, 197, 94, 0.2);
-}
-
-.cod-icon {
-  font-size: 3rem;
-  margin-bottom: 8px;
-}
-
-.cod-note {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: rgba(34, 197, 94, 0.1);
-  border-radius: var(--radius-sm);
-  padding: 12px 16px;
-  color: var(--text-secondary);
-  font-size: 0.95rem;
-  margin: 12px 0;
-}
-
-.cod-note i {
-  color: #22c55e;
+.error-message i {
   font-size: 1.2rem;
+  flex-shrink: 0;
 }
 
-.cod-benefits {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  margin-top: 12px;
-}
-
-.benefit {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 12px;
-  background: var(--bg-card);
-  border-radius: var(--radius-sm);
-  font-size: 0.85rem;
-  color: var(--text-secondary);
-}
-
-.benefit i {
-  color: #22c55e;
-}
-
-/* ===== PLACE ORDER BUTTON ===== */
 .place-order-btn {
   width: 100%;
   text-align: center;
@@ -969,7 +686,11 @@ onMounted(() => {
   font-size: 1.1rem;
 }
 
-/* ===== ORDER SUMMARY ===== */
+.place-order-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
 .order-summary {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
@@ -989,7 +710,6 @@ onMounted(() => {
   border-bottom: 1px solid var(--border-color);
 }
 
-/* ===== SUMMARY ITEMS WITH IMAGES ===== */
 .summary-items {
   max-height: 300px;
   overflow-y: auto;
@@ -1057,7 +777,6 @@ onMounted(() => {
   color: var(--text-primary);
 }
 
-/* ===== SUMMARY TOTALS ===== */
 .summary-totals {
   border-top: 1px solid var(--border-color);
   padding-top: 16px;
@@ -1079,7 +798,6 @@ onMounted(() => {
   margin-top: 8px;
 }
 
-/* ===== DELIVERY INFO ===== */
 .delivery-info {
   margin: 16px 0;
   padding: 12px;
@@ -1101,7 +819,6 @@ onMounted(() => {
   font-size: 1.1rem;
 }
 
-/* ===== SECURE CHECKOUT ===== */
 .secure-checkout {
   display: flex;
   align-items: center;
@@ -1116,7 +833,6 @@ onMounted(() => {
   color: #22c55e;
 }
 
-/* ===== EMPTY CART ===== */
 .empty-cart {
   display: flex;
   justify-content: center;
@@ -1143,7 +859,10 @@ onMounted(() => {
   font-size: 1.05rem;
 }
 
-/* ===== RESPONSIVE ===== */
+.spin {
+  animation: spin 1s linear infinite;
+}
+
 @media (max-width: 1024px) {
   .checkout-grid {
     grid-template-columns: 1fr;
@@ -1174,24 +893,6 @@ onMounted(() => {
   .payment-grid {
     grid-template-columns: 1fr;
   }
-
-  .cod-benefits {
-    grid-template-columns: 1fr;
-  }
-
-  .card-logos {
-    flex-wrap: wrap;
-  }
-
-  .merchant-number {
-    flex-direction: column;
-    text-align: center;
-  }
-
-  .item-image {
-    width: 40px;
-    height: 40px;
-  }
 }
 
 @media (max-width: 480px) {
@@ -1201,15 +902,6 @@ onMounted(() => {
 
   .payment-option {
     padding: 10px;
-  }
-
-  .payment-info-box {
-    padding: 14px;
-  }
-
-  .cod-note {
-    flex-direction: column;
-    text-align: center;
   }
 
   .summary-item {

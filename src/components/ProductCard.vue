@@ -81,7 +81,6 @@ const isTogglingWishlist = ref(false)
 
 // ===== CHECK IF PRODUCT IS IN WISHLIST =====
 const checkWishlistStatus = async () => {
-  // Check if user is logged in
   const token = localStorage.getItem('token')
   
   if (token) {
@@ -93,16 +92,66 @@ const checkWishlistStatus = async () => {
       }
     } catch (error) {
       console.error('Error checking wishlist status via API:', error)
-      // Fallback to localStorage
       const wishlist = JSON.parse(localStorage.getItem('shopsphere_wishlist') || '[]')
       isWishlisted.value = wishlist.some(item => item.id === props.product.id)
       return
     }
   }
   
-  // Not logged in or API failed - use localStorage
   const wishlist = JSON.parse(localStorage.getItem('shopsphere_wishlist') || '[]')
   isWishlisted.value = wishlist.some(item => item.id === props.product.id)
+}
+
+// ===== UPDATE WISHLIST COUNT AND DISPATCH =====
+const updateWishlistCountAndDispatch = async () => {
+  try {
+    const token = localStorage.getItem('token')
+    let count = 0
+    
+    if (token) {
+      const response = await wishlistApi.getWishlist()
+      count = response.data.data?.count || 0
+    } else {
+      const items = JSON.parse(localStorage.getItem('shopsphere_wishlist') || '[]')
+      count = items.length
+    }
+    
+    // Dispatch event with count
+    window.dispatchEvent(new CustomEvent('wishlist-updated', { 
+      detail: { count: count } 
+    }))
+    window.dispatchEvent(new Event('storage'))
+    
+    console.log('✅ Wishlist count dispatched:', count)
+  } catch (error) {
+    console.error('Error updating wishlist count:', error)
+  }
+}
+
+// ===== UPDATE CART COUNT AND DISPATCH =====
+const updateCartCountAndDispatch = async () => {
+  try {
+    const token = localStorage.getItem('token')
+    let count = 0
+    
+    if (token) {
+      const response = await cartApi.getCartTotal()
+      count = response.data.data?.count || 0
+    } else {
+      const items = JSON.parse(localStorage.getItem('shopsphere_cart') || '[]')
+      count = items.reduce((sum, item) => sum + item.quantity, 0)
+    }
+    
+    // Dispatch event with count
+    window.dispatchEvent(new CustomEvent('cart-updated', { 
+      detail: { count: count } 
+    }))
+    window.dispatchEvent(new Event('storage'))
+    
+    console.log('✅ Cart count dispatched:', count)
+  } catch (error) {
+    console.error('Error updating cart count:', error)
+  }
 }
 
 // ===== TOGGLE WISHLIST =====
@@ -113,32 +162,27 @@ const toggleWishlist = async () => {
   const token = localStorage.getItem('token')
   
   if (token) {
-    // Logged in - use API
     try {
       if (isWishlisted.value) {
-        // Remove from wishlist
         const response = await wishlistApi.removeFromWishlist(props.product.id)
         if (response.data.success) {
           isWishlisted.value = false
           alert('💔 Removed from wishlist!')
-          window.dispatchEvent(new CustomEvent('wishlist-updated'))
+          await updateWishlistCountAndDispatch()
         }
       } else {
-        // Add to wishlist
         const response = await wishlistApi.addToWishlist(props.product.id)
         if (response.data.success) {
           isWishlisted.value = true
           alert('❤️ Added to wishlist!')
-          window.dispatchEvent(new CustomEvent('wishlist-updated'))
+          await updateWishlistCountAndDispatch()
         }
       }
     } catch (error) {
       console.error('Error toggling wishlist via API:', error)
-      // Fallback to localStorage
       toggleWishlistLocal()
     }
   } else {
-    // Not logged in - use localStorage
     toggleWishlistLocal()
   }
   
@@ -168,7 +212,7 @@ const toggleWishlistLocal = () => {
     alert('💔 Removed from wishlist!')
   }
   
-  window.dispatchEvent(new CustomEvent('wishlist-updated'))
+  updateWishlistCountAndDispatch()
 }
 
 // ===== ADD TO CART =====
@@ -180,17 +224,13 @@ const addToCart = async () => {
     const token = localStorage.getItem('token')
     
     if (token) {
-      // Logged in - use API
       const response = await cartApi.addToCart(props.product.id, 1)
       if (response.data.success) {
-        window.dispatchEvent(new CustomEvent('cart-updated', { 
-          detail: { count: response.data.data.cart_count } 
-        }))
         alert(`🛒 Added "${props.product.name}" to cart!`)
+        await updateCartCountAndDispatch()
         emit('add-to-cart', props.product)
       }
     } else {
-      // Not logged in - use localStorage
       let cart = JSON.parse(localStorage.getItem('shopsphere_cart') || '[]')
       const existingItem = cart.find(item => item.id === props.product.id)
       
@@ -205,8 +245,7 @@ const addToCart = async () => {
       }
       
       localStorage.setItem('shopsphere_cart', JSON.stringify(cart))
-      window.dispatchEvent(new Event('storage'))
-      window.dispatchEvent(new CustomEvent('cart-updated'))
+      await updateCartCountAndDispatch()
       
       const message = existingItem ? `Added another "${props.product.name}" to cart!` : `Added "${props.product.name}" to cart!`
       alert(`🛒 ${message}`)
@@ -214,7 +253,6 @@ const addToCart = async () => {
     }
   } catch (error) {
     console.error('Error adding to cart:', error)
-    // Fallback to localStorage
     let cart = JSON.parse(localStorage.getItem('shopsphere_cart') || '[]')
     const existingItem = cart.find(item => item.id === props.product.id)
     
@@ -229,8 +267,7 @@ const addToCart = async () => {
     }
     
     localStorage.setItem('shopsphere_cart', JSON.stringify(cart))
-    window.dispatchEvent(new Event('storage'))
-    window.dispatchEvent(new CustomEvent('cart-updated'))
+    await updateCartCountAndDispatch()
     
     const message = existingItem ? `Added another "${props.product.name}" to cart!` : `Added "${props.product.name}" to cart!`
     alert(`🛒 ${message}`)
@@ -244,7 +281,6 @@ const viewProduct = () => {
   emit('view-product', props.product)
 }
 
-// ===== HANDLE IMAGE ERROR =====
 const handleImageError = (e) => {
   imageError.value = true
   e.target.style.display = 'none'
@@ -257,7 +293,6 @@ const handleImageError = (e) => {
 
 const emit = defineEmits(['wishlist-toggle', 'add-to-cart', 'view-product'])
 
-// ===== LIFECYCLE =====
 onMounted(() => {
   checkWishlistStatus()
 })

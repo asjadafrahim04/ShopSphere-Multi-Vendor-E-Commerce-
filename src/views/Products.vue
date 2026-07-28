@@ -15,7 +15,7 @@
             <i class="bi bi-search"></i>
             <input 
               type="text" 
-              v-model="searchQuery" 
+              v-model="filters.search" 
               placeholder="Search products..."
               @input="applyFilters"
             />
@@ -23,21 +23,20 @@
 
           <!-- Category Filter -->
           <div class="filter-group">
-            <select v-model="selectedCategory" @change="applyFilters">
+            <select v-model="filters.category_id" @change="applyFilters">
               <option value="">All Categories</option>
-              <option v-for="category in categories" :key="category" :value="category">
-                {{ category }}
+              <option v-for="category in categories" :key="category.id" :value="category.id">
+                {{ category.name }}
               </option>
             </select>
           </div>
 
           <!-- Sort By -->
           <div class="filter-group">
-            <select v-model="sortBy" @change="applyFilters">
-              <option value="default">Sort By</option>
+            <select v-model="filters.sort" @change="applyFilters">
+              <option value="newest">Newest First</option>
               <option value="price-low">Price: Low → High</option>
               <option value="price-high">Price: High → Low</option>
-              <option value="newest">Newest First</option>
               <option value="rating">Highest Rated</option>
               <option value="popular">Best Selling</option>
             </select>
@@ -49,14 +48,14 @@
             <div class="price-inputs">
               <input 
                 type="number" 
-                v-model="minPrice" 
+                v-model="filters.min_price" 
                 placeholder="Min"
                 @input="applyFilters"
               />
               <span class="price-separator">-</span>
               <input 
                 type="number" 
-                v-model="maxPrice" 
+                v-model="filters.max_price" 
                 placeholder="Max"
                 @input="applyFilters"
               />
@@ -66,17 +65,23 @@
 
         <!-- Filter Results Info -->
         <div class="filter-results">
-          <span>Showing {{ filteredProducts.length }} products</span>
+          <span>Showing {{ products.length }} products</span>
           <button v-if="hasActiveFilters" class="clear-filters" @click="clearFilters">
             <i class="bi bi-x-circle"></i> Clear All Filters
           </button>
         </div>
       </div>
 
+      <!-- Loading State -->
+      <div v-if="loading" class="loading-state">
+        <div class="spinner"></div>
+        <p>Loading products...</p>
+      </div>
+
       <!-- Products Grid -->
-      <div v-if="filteredProducts.length > 0" class="products-grid">
+      <div v-else-if="products.length > 0" class="products-grid">
         <ProductCard 
-          v-for="product in filteredProducts" 
+          v-for="product in products" 
           :key="product.id"
           :product="product"
           @add-to-cart="handleAddToCart"
@@ -94,258 +99,204 @@
           <button class="btn-primary-modern" @click="clearFilters">Clear All Filters</button>
         </div>
       </div>
+
+      <!-- Pagination -->
+      <div v-if="pagination.last_page > 1" class="pagination-section">
+        <button 
+          class="pagination-btn" 
+          :disabled="pagination.current_page <= 1"
+          @click="goToPage(pagination.current_page - 1)"
+        >
+          <i class="bi bi-chevron-left"></i>
+        </button>
+        <span class="pagination-info">
+          Page {{ pagination.current_page }} of {{ pagination.last_page }}
+        </span>
+        <button 
+          class="pagination-btn" 
+          :disabled="pagination.current_page >= pagination.last_page"
+          @click="goToPage(pagination.current_page + 1)"
+        >
+          <i class="bi bi-chevron-right"></i>
+        </button>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import ProductCard from '../components/ProductCard.vue'
+import { productApi, categoryApi } from '@/services/api'
+import ProductCard from '@/components/ProductCard.vue'
 
 const router = useRouter()
 const route = useRoute()
 
-// ===== FILTER STATE =====
-const searchQuery = ref('')
-const selectedCategory = ref('')
-const sortBy = ref('default')
-const minPrice = ref('')
-const maxPrice = ref('')
+// ===== STATE =====
+const products = ref([])
+const categories = ref([])
+const loading = ref(true)
+const error = ref(null)
 
-// ===== ALL PRODUCTS DATA WITH REAL IMAGES =====
-const allProducts = ref([
-  { 
-    id: 1, 
-    name: 'Wireless Noise-Cancelling Headphones', 
-    vendor: 'TechShop', 
-    category: 'Electronics',
-    price: 49.99,
-    originalPrice: 79.99,
-    rating: 4.8, 
-    reviews: 234,
-    image: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?q=80&w=870&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D',
-    isNew: true,
-    discount: 38,
-    description: 'Premium wireless headphones with active noise cancellation.',
-    stock: 'In Stock',
-    features: ['Active Noise Cancellation', '30 Hour Battery', 'Bluetooth 5.0']
-  },
-  { 
-    id: 2, 
-    name: 'Premium Leather Jacket', 
-    vendor: 'FashionHub', 
-    category: 'Fashion',
-    price: 89.99,
-    originalPrice: null,
-    rating: 4.5, 
-    reviews: 189,
-    image: 'https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=435&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D',
-    isNew: false,
-    discount: null,
-    description: 'Genuine leather jacket with premium stitching.',
-    stock: 'In Stock',
-    features: ['Genuine Leather', 'Classic Design', 'Multiple Colors']
-  },
-  { 
-    id: 3, 
-    name: 'Smart Coffee Maker Pro', 
-    vendor: 'HomeGoods', 
-    category: 'Home & Living',
-    price: 129.99,
-    originalPrice: 159.99,
-    rating: 4.7, 
-    reviews: 312,
-    image: 'https://images.unsplash.com/photo-1565452344518-47faca79dc69?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NHx8Q29mZmVlJTIwTWFrZXJ8ZW58MHx8MHx8fDA%3D',
-    isNew: true,
-    discount: 19,
-    description: 'Programmable coffee maker with smart features.',
-    stock: 'In Stock',
-    features: ['Programmable', 'Temperature Control', 'Smart Features']
-  },
-  { 
-    id: 4, 
-    name: 'Fitness Smart Watch', 
-    vendor: 'GadgetWorld', 
-    category: 'Electronics',
-    price: 199.99,
-    originalPrice: 249.99,
-    rating: 4.9, 
-    reviews: 456,
-    image: 'https://images.unsplash.com/photo-1660844817855-3ecc7ef21f12?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NHx8Rml0bmVzcyUyMFNtYXJ0JTIwV2F0Y2h8ZW58MHx8MHx8fDA%3D',
-    isNew: false,
-    discount: 20,
-    description: 'Advanced fitness tracker with heart rate monitor.',
-    stock: 'In Stock',
-    features: ['Heart Rate Monitor', 'GPS Tracking', 'Water Resistant']
-  },
-  { 
-    id: 5, 
-    name: 'Organic Cotton T-Shirt', 
-    vendor: 'FashionHub', 
-    category: 'Fashion',
-    price: 24.99,
-    originalPrice: null,
-    rating: 4.2, 
-    reviews: 78,
-    image: 'https://plus.unsplash.com/premium_photo-1673356302067-aac3b545a362?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8OXx8T3JnYW5pYyUyMENvdHRvbiUyMFQtU2hpcnR8ZW58MHx8MHx8fDA%3D',
-    isNew: true,
-    discount: null,
-    description: 'Comfortable organic cotton t-shirt.',
-    stock: 'In Stock',
-    features: ['Organic Cotton', 'Multiple Colors', 'Comfortable Fit']
-  },
-  { 
-    id: 6, 
-    name: 'E-Reader Paperwhite', 
-    vendor: 'TechShop', 
-    category: 'Electronics',
-    price: 139.99,
-    originalPrice: 159.99,
-    rating: 4.6, 
-    reviews: 267,
-    image: 'https://images.unsplash.com/photo-1703332795377-65ccc6818232?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MXx8RS1SZWFkZXIlMjBQYXBlcndoaXRlfGVufDB8fDB8fHww',
-    isNew: false,
-    discount: 12,
-    description: 'Waterproof e-reader with built-in light.',
-    stock: 'In Stock',
-    features: ['Waterproof', 'Built-in Light', 'Weeks of Battery']
-  },
-  { 
-    id: 7, 
-    name: 'Professional Knife Set', 
-    vendor: 'HomeGoods', 
-    category: 'Home & Living',
-    price: 79.99,
-    originalPrice: null,
-    rating: 4.4, 
-    reviews: 145,
-    image: 'https://images.unsplash.com/photo-1674660346036-4b3df3f07cca?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NHx8UHJvZmVzc2lvbmFsJTIwS25pZmUlMjBTZXR8ZW58MHx8MHx8fDA%3D',
-    isNew: false,
-    discount: null,
-    description: 'Professional 5-piece kitchen knife set.',
-    stock: 'In Stock',
-    features: ['Stainless Steel', '5-Piece Set', 'Wooden Storage']
-  },
-  { 
-    id: 8, 
-    name: 'Wireless Charging Pad', 
-    vendor: 'GadgetWorld', 
-    category: 'Electronics',
-    price: 29.99,
-    originalPrice: 49.99,
-    rating: 4.3, 
-    reviews: 198,
-    image: 'https://images.unsplash.com/photo-1633381638729-27f730955c23?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8M3x8V2lyZWxlc3MlMjBDaGFyZ2luZyUyMFBhZHxlbnwwfHwwfHx8MA%3D%3D',
-    isNew: true,
-    discount: 40,
-    description: 'Fast wireless charging pad for all devices.',
-    stock: 'In Stock',
-    features: ['Fast Charging', 'Qi-Compatible', 'Sleek Design']
-  },
-])
-
-// ===== CATEGORIES =====
-const categories = ref([
-  'Electronics', 'Fashion', 'Home & Living'
-])
-
-// ===== FILTERED PRODUCTS =====
-const filteredProducts = computed(() => {
-  let products = [...allProducts.value]
-
-  // Search filter
-  if (searchQuery.value) {
-    const query = searchQuery.value.toLowerCase()
-    products = products.filter(p => 
-      p.name.toLowerCase().includes(query) ||
-      p.vendor.toLowerCase().includes(query) ||
-      p.category.toLowerCase().includes(query)
-    )
-  }
-
-  // Category filter
-  if (selectedCategory.value) {
-    products = products.filter(p => p.category === selectedCategory.value)
-  }
-
-  // Price range filter
-  if (minPrice.value) {
-    products = products.filter(p => p.price >= Number(minPrice.value))
-  }
-  if (maxPrice.value) {
-    products = products.filter(p => p.price <= Number(maxPrice.value))
-  }
-
-  // Sorting
-  switch (sortBy.value) {
-    case 'price-low':
-      products.sort((a, b) => a.price - b.price)
-      break
-    case 'price-high':
-      products.sort((a, b) => b.price - a.price)
-      break
-    case 'newest':
-      products.sort((a, b) => (a.isNew === b.isNew) ? 0 : a.isNew ? -1 : 1)
-      break
-    case 'rating':
-      products.sort((a, b) => b.rating - a.rating)
-      break
-    case 'popular':
-      products.sort((a, b) => b.reviews - a.reviews)
-      break
-    default:
-      break
-  }
-
-  return products
+// ===== FILTERS =====
+const filters = ref({
+  search: '',
+  category_id: '',
+  sort: 'newest',
+  min_price: '',
+  max_price: '',
 })
 
-// ===== COMPUTED HELPERS =====
+// ===== PAGINATION =====
+const pagination = ref({
+  current_page: 1,
+  last_page: 1,
+  per_page: 20,
+  total: 0,
+})
+
+// ===== COMPUTED =====
 const hasActiveFilters = computed(() => {
-  return searchQuery.value || 
-         selectedCategory.value || 
-         sortBy.value !== 'default' || 
-         minPrice.value || 
-         maxPrice.value
+  return filters.value.search || 
+         filters.value.category_id || 
+         filters.value.sort !== 'newest' || 
+         filters.value.min_price || 
+         filters.value.max_price
 })
 
 // ===== METHODS =====
-const applyFilters = () => {}
-
-const clearFilters = () => {
-  searchQuery.value = ''
-  selectedCategory.value = ''
-  sortBy.value = 'default'
-  minPrice.value = ''
-  maxPrice.value = ''
+const loadCategories = async () => {
+  try {
+    const response = await categoryApi.getCategories()
+    if (response.data.success) {
+      categories.value = response.data.data
+    }
+  } catch (error) {
+    console.error('Error loading categories:', error)
+  }
 }
 
-// ===== EVENT HANDLERS =====
+const loadProducts = async () => {
+  loading.value = true
+  error.value = null
+
+  try {
+    // Build query parameters
+    const params = {
+      page: pagination.value.current_page,
+      per_page: 20,
+    }
+
+    if (filters.value.search) {
+      params.search = filters.value.search
+    }
+    if (filters.value.category_id) {
+      params.category_id = filters.value.category_id
+    }
+    if (filters.value.sort) {
+      params.sort = filters.value.sort
+    }
+    if (filters.value.min_price) {
+      params.min_price = filters.value.min_price
+    }
+    if (filters.value.max_price) {
+      params.max_price = filters.value.max_price
+    }
+
+    console.log('Fetching products with params:', params)
+
+    const response = await productApi.getProducts(params)
+    
+    if (response.data.success) {
+      const productData = response.data.data
+      products.value = productData.data || []
+      pagination.value = {
+        current_page: productData.current_page || 1,
+        last_page: productData.last_page || 1,
+        per_page: productData.per_page || 20,
+        total: productData.total || 0,
+      }
+    }
+  } catch (error) {
+    console.error('Error loading products:', error)
+    error.value = 'Failed to load products. Please try again.'
+    products.value = []
+  } finally {
+    loading.value = false
+  }
+}
+
+const applyFilters = () => {
+  pagination.value.current_page = 1
+  loadProducts()
+  updateUrl()
+}
+
+const clearFilters = () => {
+  filters.value = {
+    search: '',
+    category_id: '',
+    sort: 'newest',
+    min_price: '',
+    max_price: '',
+  }
+  pagination.value.current_page = 1
+  loadProducts()
+  updateUrl()
+}
+
+const goToPage = (page) => {
+  if (page < 1 || page > pagination.value.last_page) return
+  pagination.value.current_page = page
+  loadProducts()
+  updateUrl()
+}
+
+const updateUrl = () => {
+  const query = {}
+  if (filters.value.search) query.search = filters.value.search
+  if (filters.value.category_id) query.category = filters.value.category_id
+  if (filters.value.sort !== 'newest') query.sort = filters.value.sort
+  if (filters.value.min_price) query.min_price = filters.value.min_price
+  if (filters.value.max_price) query.max_price = filters.value.max_price
+  if (pagination.value.current_page > 1) query.page = pagination.value.current_page
+  
+  router.replace({ query })
+}
+
 const handleAddToCart = (product) => {
   console.log('Added to cart:', product)
-  alert(`🛒 Added "${product.name}" to cart!`)
 }
 
 const handleWishlistToggle = ({ productId, isWishlisted }) => {
   console.log('Wishlist toggled:', productId, isWishlisted)
-  const message = isWishlisted ? 'added to' : 'removed from'
-  alert(`❤️ Product ${message} wishlist!`)
 }
 
 const handleViewProduct = (product) => {
-  console.log('View product:', product)
   router.push(`/product/${product.id}`)
 }
 
+// ===== WATCHERS =====
+watch(() => route.query, (newQuery) => {
+  // Sync filters from URL
+  if (newQuery.search) filters.value.search = newQuery.search
+  if (newQuery.category) filters.value.category_id = newQuery.category
+  if (newQuery.sort) filters.value.sort = newQuery.sort
+  if (newQuery.min_price) filters.value.min_price = newQuery.min_price
+  if (newQuery.max_price) filters.value.max_price = newQuery.max_price
+  if (newQuery.page) pagination.value.current_page = parseInt(newQuery.page)
+  
+  loadProducts()
+}, { immediate: false })
+
 // ===== LIFECYCLE =====
 onMounted(() => {
-  if (route.query.search) {
-    searchQuery.value = route.query.search
-  }
-  if (route.query.category) {
-    selectedCategory.value = route.query.category
-  }
+  // Load categories first
+  loadCategories()
+  
+  // Load products
+  loadProducts()
 })
 </script>
 
@@ -507,6 +458,35 @@ onMounted(() => {
   transform: scale(1.02);
 }
 
+/* ===== LOADING STATE ===== */
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+  gap: 20px;
+}
+
+.spinner {
+  width: 48px;
+  height: 48px;
+  border: 4px solid var(--border-color);
+  border-top: 4px solid #667eea;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.loading-state p {
+  color: var(--text-secondary);
+  font-size: 1.1rem;
+}
+
 /* ===== PRODUCTS GRID ===== */
 .products-grid {
   display: grid;
@@ -539,6 +519,45 @@ onMounted(() => {
 .empty-state p {
   color: var(--text-muted);
   font-size: 1.05rem;
+}
+
+/* ===== PAGINATION ===== */
+.pagination-section {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 16px;
+  margin-top: 40px;
+}
+
+.pagination-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: var(--transition);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pagination-btn:hover:not(:disabled) {
+  background: var(--gradient-primary);
+  color: white;
+  border-color: transparent;
+}
+
+.pagination-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.pagination-info {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
 }
 
 /* ===== RESPONSIVE ===== */
@@ -580,6 +599,10 @@ onMounted(() => {
     flex-direction: column;
     gap: 8px;
     text-align: center;
+  }
+
+  .price-inputs {
+    flex-wrap: nowrap;
   }
 }
 

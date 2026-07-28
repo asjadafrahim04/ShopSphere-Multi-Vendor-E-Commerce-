@@ -105,7 +105,7 @@ class Product extends Model
         return $query->where('stock_quantity', '>', 0);
     }
 
-    // ===== CART HELPER METHODS =====
+    // ===== STOCK HELPER METHODS =====
     /**
      * Check if product has enough stock
      */
@@ -127,7 +127,7 @@ class Product extends Model
     }
 
     /**
-     * Increase stock when product is returned
+     * Increase stock when product is returned or order cancelled
      */
     public function increaseStock($quantity = 1)
     {
@@ -158,5 +158,80 @@ class Product extends Model
     public function isAvailable()
     {
         return $this->status === 'active' && $this->stock_quantity > 0;
+    }
+
+    /**
+     * Get product rating formatted
+     */
+    public function getRatingAttribute($value)
+    {
+        return round($value, 1);
+    }
+
+    /**
+     * Get formatted price with currency symbol
+     */
+    public function getFormattedPriceAttribute()
+    {
+        return '$' . number_format($this->price, 2);
+    }
+
+    /**
+     * Get formatted compare price with currency symbol
+     */
+    public function getFormattedComparePriceAttribute()
+    {
+        return $this->compare_price ? '$' . number_format($this->compare_price, 2) : null;
+    }
+
+    /**
+     * Get formatted discounted price with currency symbol
+     */
+    public function getFormattedDiscountedPriceAttribute()
+    {
+        return '$' . number_format($this->discounted_price, 2);
+    }
+
+    /**
+     * Get product name with vendor
+     */
+    public function getFullNameAttribute()
+    {
+        return $this->name . ' - ' . ($this->vendor->shop_name ?? '');
+    }
+
+    /**
+     * Check if product is new (created within last 30 days)
+     */
+    public function getIsNewArrivalAttribute()
+    {
+        return $this->created_at >= now()->subDays(30);
+    }
+
+    /**
+     * Get low stock alert
+     */
+    public function getLowStockAlertAttribute()
+    {
+        if ($this->stock_quantity <= $this->low_stock_threshold && $this->stock_quantity > 0) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Get average rating from reviews
+     */
+    public function getAverageRatingAttribute()
+    {
+        return $this->reviews()->avg('rating') ?? 0;
+    }
+
+    /**
+     * Get total reviews count
+     */
+    public function getTotalReviewsAttribute()
+    {
+        return $this->reviews()->count();
     }
 }
