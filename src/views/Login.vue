@@ -186,8 +186,13 @@ const handleLogin = async () => {
       
       isLoading.value = false
       
-      // Redirect to home
-      router.push('/')
+      // ✅ FIX: Redirect based on user role
+      const user = response.data.user
+      if (user?.role === 'vendor' || user?.role === 'admin') {
+        router.push('/vendor/dashboard')  // Vendors go to dashboard
+      } else {
+        router.push('/')  // Customers go to home
+      }
     }
   } catch (error) {
     isLoading.value = false

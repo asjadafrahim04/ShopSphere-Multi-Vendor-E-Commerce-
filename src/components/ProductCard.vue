@@ -24,7 +24,8 @@
 
     <!-- Product Info -->
     <div class="product-info">
-      <div class="product-vendor">{{ product.vendor }}</div>
+      <!-- ✅ FIX: Display vendor name correctly -->
+      <div class="product-vendor">{{ getVendorName() }}</div>
       <h5 class="product-title">{{ product.name }}</h5>
       
       <!-- Rating -->
@@ -51,7 +52,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { cartApi, wishlistApi } from '../services/api'
+import { cartApi, wishlistApi } from '@/services/api'
 
 const props = defineProps({
   product: {
@@ -79,6 +80,20 @@ const imageError = ref(false)
 const isAddingToCart = ref(false)
 const isTogglingWishlist = ref(false)
 
+// ===== GET VENDOR NAME =====
+const getVendorName = () => {
+  // If vendor is an object with shop_name, use that
+  if (props.product.vendor && typeof props.product.vendor === 'object') {
+    return props.product.vendor.shop_name || 'ShopSphere'
+  }
+  // If vendor is a string, use it directly
+  if (typeof props.product.vendor === 'string') {
+    return props.product.vendor
+  }
+  // Fallback
+  return 'ShopSphere'
+}
+
 // ===== CHECK IF PRODUCT IS IN WISHLIST =====
 const checkWishlistStatus = async () => {
   const token = localStorage.getItem('token')
@@ -92,66 +107,11 @@ const checkWishlistStatus = async () => {
       }
     } catch (error) {
       console.error('Error checking wishlist status via API:', error)
-      const wishlist = JSON.parse(localStorage.getItem('shopsphere_wishlist') || '[]')
-      isWishlisted.value = wishlist.some(item => item.id === props.product.id)
-      return
     }
   }
   
   const wishlist = JSON.parse(localStorage.getItem('shopsphere_wishlist') || '[]')
   isWishlisted.value = wishlist.some(item => item.id === props.product.id)
-}
-
-// ===== UPDATE WISHLIST COUNT AND DISPATCH =====
-const updateWishlistCountAndDispatch = async () => {
-  try {
-    const token = localStorage.getItem('token')
-    let count = 0
-    
-    if (token) {
-      const response = await wishlistApi.getWishlist()
-      count = response.data.data?.count || 0
-    } else {
-      const items = JSON.parse(localStorage.getItem('shopsphere_wishlist') || '[]')
-      count = items.length
-    }
-    
-    // Dispatch event with count
-    window.dispatchEvent(new CustomEvent('wishlist-updated', { 
-      detail: { count: count } 
-    }))
-    window.dispatchEvent(new Event('storage'))
-    
-    console.log('✅ Wishlist count dispatched:', count)
-  } catch (error) {
-    console.error('Error updating wishlist count:', error)
-  }
-}
-
-// ===== UPDATE CART COUNT AND DISPATCH =====
-const updateCartCountAndDispatch = async () => {
-  try {
-    const token = localStorage.getItem('token')
-    let count = 0
-    
-    if (token) {
-      const response = await cartApi.getCartTotal()
-      count = response.data.data?.count || 0
-    } else {
-      const items = JSON.parse(localStorage.getItem('shopsphere_cart') || '[]')
-      count = items.reduce((sum, item) => sum + item.quantity, 0)
-    }
-    
-    // Dispatch event with count
-    window.dispatchEvent(new CustomEvent('cart-updated', { 
-      detail: { count: count } 
-    }))
-    window.dispatchEvent(new Event('storage'))
-    
-    console.log('✅ Cart count dispatched:', count)
-  } catch (error) {
-    console.error('Error updating cart count:', error)
-  }
 }
 
 // ===== TOGGLE WISHLIST =====
@@ -190,6 +150,31 @@ const toggleWishlist = async () => {
   emit('wishlist-toggle', { productId: props.product.id, isWishlisted: isWishlisted.value })
 }
 
+// ===== UPDATE WISHLIST COUNT =====
+const updateWishlistCountAndDispatch = async () => {
+  try {
+    const token = localStorage.getItem('token')
+    if (token) {
+      const response = await wishlistApi.getWishlist()
+      const count = response.data.data?.count || 0
+      window.dispatchEvent(new CustomEvent('wishlist-updated', { 
+        detail: { count: count } 
+      }))
+    } else {
+      const items = JSON.parse(localStorage.getItem('shopsphere_wishlist') || '[]')
+      window.dispatchEvent(new CustomEvent('wishlist-updated', { 
+        detail: { count: items.length } 
+      }))
+    }
+  } catch (error) {
+    const items = JSON.parse(localStorage.getItem('shopsphere_wishlist') || '[]')
+    window.dispatchEvent(new CustomEvent('wishlist-updated', { 
+      detail: { count: items.length } 
+    }))
+  }
+  window.dispatchEvent(new Event('storage'))
+}
+
 // ===== TOGGLE WISHLIST (LocalStorage Fallback) =====
 const toggleWishlistLocal = () => {
   isWishlisted.value = !isWishlisted.value
@@ -212,7 +197,38 @@ const toggleWishlistLocal = () => {
     alert('💔 Removed from wishlist!')
   }
   
-  updateWishlistCountAndDispatch()
+  const items = JSON.parse(localStorage.getItem('shopsphere_wishlist') || '[]')
+  window.dispatchEvent(new CustomEvent('wishlist-updated', { 
+    detail: { count: items.length } 
+  }))
+  window.dispatchEvent(new Event('storage'))
+}
+
+// ===== UPDATE CART COUNT =====
+const updateCartCountAndDispatch = async () => {
+  try {
+    const token = localStorage.getItem('token')
+    if (token) {
+      const response = await cartApi.getCartTotal()
+      const count = response.data.data?.count || 0
+      window.dispatchEvent(new CustomEvent('cart-updated', { 
+        detail: { count: count } 
+      }))
+    } else {
+      const items = JSON.parse(localStorage.getItem('shopsphere_cart') || '[]')
+      const count = items.reduce((sum, item) => sum + item.quantity, 0)
+      window.dispatchEvent(new CustomEvent('cart-updated', { 
+        detail: { count: count } 
+      }))
+    }
+  } catch (error) {
+    const items = JSON.parse(localStorage.getItem('shopsphere_cart') || '[]')
+    const count = items.reduce((sum, item) => sum + item.quantity, 0)
+    window.dispatchEvent(new CustomEvent('cart-updated', { 
+      detail: { count: count } 
+    }))
+  }
+  window.dispatchEvent(new Event('storage'))
 }
 
 // ===== ADD TO CART =====
@@ -505,7 +521,6 @@ onMounted(() => {
   font-size: 14px;
 }
 
-/* ===== DARK MODE ===== */
 @media (prefers-color-scheme: dark) {
   .current-price {
     color: #8b5cf6;
@@ -516,7 +531,6 @@ onMounted(() => {
   }
 }
 
-/* ===== RESPONSIVE ===== */
 @media (max-width: 576px) {
   .product-image {
     height: 150px;

@@ -101,7 +101,7 @@ export const cartApi = {
 export const wishlistApi = {
     getWishlist: () => api.get('/wishlist'),
     addToWishlist: (productId) => 
-        api.post(`/wishlist/add/${productId}`),  // 
+        api.post(`/wishlist/add/${productId}`),
     removeFromWishlist: (productId) => 
         api.delete(`/wishlist/remove/${productId}`),
     checkInWishlist: (productId) => 
@@ -142,10 +142,28 @@ export const vendorApi = {
     getDashboard: () => api.get('/vendor/dashboard'),
     getSalesReport: () => api.get('/vendor/sales-report'),
     
-    // Product Management
+    // Product Management (with image upload support)
     getVendorProductsList: () => api.get('/vendor/products'),
-    createProduct: (productData) => api.post('/vendor/products', productData),
-    updateProduct: (id, productData) => api.put(`/vendor/products/${id}`, productData),
+    createProduct: (productData) => {
+        // If FormData is passed, let axios handle the headers
+        if (productData instanceof FormData) {
+            return api.post('/vendor/products', productData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            })
+        }
+        return api.post('/vendor/products', productData)
+    },
+    updateProduct: (id, productData) => {
+        // If FormData is passed, let axios handle the headers
+        if (productData instanceof FormData) {
+            // For PUT with FormData, append _method
+            productData.append('_method', 'PUT')
+            return api.post(`/vendor/products/${id}`, productData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            })
+        }
+        return api.put(`/vendor/products/${id}`, productData)
+    },
     deleteProduct: (id) => api.delete(`/vendor/products/${id}`),
     
     // Order Management

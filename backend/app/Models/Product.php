@@ -4,95 +4,124 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Product extends Model
 {
     use HasFactory;
 
     protected $fillable = [
-        'vendor_id', 'category_id', 'name', 'slug', 'description',
-        'price', 'compare_price', 'stock_quantity', 'low_stock_threshold',
-        'sku', 'barcode', 'attributes', 'rating', 'reviews_count',
-        'status', 'is_featured', 'is_new', 'discount_percentage',
-        'discount_start', 'discount_end', 'view_count', 'sold_count'
+        'vendor_id',
+        'category_id',
+        'name',
+        'slug',
+        'description',
+        'price',
+        'compare_price',
+        'discount_percentage',
+        'discount_start',
+        'discount_end',
+        'stock_quantity',
+        'low_stock_threshold',
+        'sku',
+        'barcode',
+        'attributes',
+        'specifications',
+        'meta_data',
+        'rating',
+        'reviews_count',
+        'status',
+        'is_active',
+        'is_featured',
+        'is_new',
+        'is_approved',
+        'is_best_seller',
+        'view_count',
+        'sold_count',
+        'wishlist_count',
+        'weight',
+        'length',
+        'width',
+        'height',
+        'meta_title',
+        'meta_description',
+        'meta_keywords',
+        'published_at',
+        'featured_until',
     ];
 
     protected $casts = [
-        'attributes' => 'array',
-        'is_featured' => 'boolean',
-        'is_new' => 'boolean',
         'price' => 'decimal:2',
         'compare_price' => 'decimal:2',
         'discount_percentage' => 'decimal:2',
+        'weight' => 'decimal:2',
+        'length' => 'decimal:2',
+        'width' => 'decimal:2',
+        'height' => 'decimal:2',
+        'rating' => 'float',
+        'is_active' => 'boolean',
+        'is_featured' => 'boolean',
+        'is_new' => 'boolean',
+        'is_approved' => 'boolean',
+        'is_best_seller' => 'boolean',
+        'discount_start' => 'datetime',
+        'discount_end' => 'datetime',
+        'published_at' => 'datetime',
+        'featured_until' => 'datetime',
+        'attributes' => 'array',
+        'specifications' => 'array',
+        'meta_data' => 'array',
+        'reviews_count' => 'integer',
+        'view_count' => 'integer',
+        'sold_count' => 'integer',
+        'wishlist_count' => 'integer',
+        'stock_quantity' => 'integer',
+        'low_stock_threshold' => 'integer',
     ];
 
     // ===== RELATIONSHIPS =====
-    public function vendor()
+
+    public function vendor(): BelongsTo
     {
-        return $this->belongsTo(Vendor::class);
+        return $this->belongsTo(User::class, 'vendor_id');
     }
 
-    public function category()
+    public function category(): BelongsTo
     {
         return $this->belongsTo(Category::class);
     }
 
-    public function images()
+    public function images(): HasMany
     {
         return $this->hasMany(ProductImage::class);
     }
 
-    public function cartItems()
-    {
-        return $this->hasMany(CartItem::class);
-    }
-
-    public function orderItems()
-    {
-        return $this->hasMany(OrderItem::class);
-    }
-
-    public function wishlists()
-    {
-        return $this->hasMany(Wishlist::class);
-    }
-
-    public function reviews()
+    public function reviews(): HasMany
     {
         return $this->hasMany(Review::class);
     }
 
-    // ===== ACCESSORS =====
-    public function getDiscountedPriceAttribute()
+    public function orderItems(): HasMany
     {
-        if ($this->discount_percentage && $this->discount_start <= now() && $this->discount_end >= now()) {
-            return $this->price - ($this->price * $this->discount_percentage / 100);
-        }
-        return $this->price;
+        return $this->hasMany(OrderItem::class);
     }
 
-    public function getIsOnSaleAttribute()
+    public function wishlists(): HasMany
     {
-        return $this->discount_percentage && 
-               $this->discount_start <= now() && 
-               $this->discount_end >= now();
+        return $this->hasMany(Wishlist::class);
     }
 
-    public function getStockStatusAttribute()
+    public function carts(): HasMany
     {
-        if ($this->stock_quantity <= 0) {
-            return 'out_of_stock';
-        }
-        if ($this->stock_quantity <= $this->low_stock_threshold) {
-            return 'low_stock';
-        }
-        return 'in_stock';
+        return $this->hasMany(CartItem::class);
     }
 
     // ===== SCOPES =====
+
     public function scopeActive($query)
     {
-        return $query->where('status', 'active');
+        return $query->where('is_active', true)->where('status', 'active');
     }
 
     public function scopeFeatured($query)
@@ -100,138 +129,137 @@ class Product extends Model
         return $query->where('is_featured', true);
     }
 
+    public function scopeNew($query)
+    {
+        return $query->where('is_new', true);
+    }
+
     public function scopeInStock($query)
     {
         return $query->where('stock_quantity', '>', 0);
     }
 
-    // ===== STOCK HELPER METHODS =====
-    /**
-     * Check if product has enough stock
-     */
-    public function hasStock($quantity = 1)
+    public function scopeLowStock($query, $threshold = 5)
     {
-        return $this->stock_quantity >= $quantity;
+        return $query->where('stock_quantity', '<=', $threshold);
     }
 
-    /**
-     * Decrease stock when product is purchased
-     */
-    public function decreaseStock($quantity = 1)
+    public function scopeOnSale($query)
     {
-        if ($this->hasStock($quantity)) {
-            $this->decrement('stock_quantity', $quantity);
-            return true;
+        return $query->whereNotNull('discount_percentage')
+            ->where('discount_percentage', '>', 0)
+            ->where(function($q) {
+                $q->whereNull('discount_start')
+                  ->orWhere('discount_start', '<=', now());
+            })
+            ->where(function($q) {
+                $q->whereNull('discount_end')
+                  ->orWhere('discount_end', '>=', now());
+            });
+    }
+
+    // ===== ACCESSORS =====
+
+    public function getDiscountPriceAttribute(): ?float
+    {
+        if ($this->discount_percentage && $this->is_on_sale) {
+            return $this->price - ($this->price * ($this->discount_percentage / 100));
         }
-        return false;
+        return null;
     }
 
-    /**
-     * Increase stock when product is returned or order cancelled
-     */
-    public function increaseStock($quantity = 1)
+    public function getIsOnSaleAttribute(): bool
     {
-        $this->increment('stock_quantity', $quantity);
+        if (!$this->discount_percentage || $this->discount_percentage <= 0) {
+            return false;
+        }
+
+        if ($this->discount_start && $this->discount_start > now()) {
+            return false;
+        }
+
+        if ($this->discount_end && $this->discount_end < now()) {
+            return false;
+        }
+
         return true;
     }
 
-    /**
-     * Get the effective price (with discount if applicable)
-     */
-    public function getEffectivePrice()
+    public function getPrimaryImageAttribute()
     {
-        return $this->is_on_sale ? $this->discounted_price : $this->price;
+        return $this->images->where('is_primary', true)->first() 
+            ?? $this->images->first();
     }
 
-    /**
-     * Get product image URL or fallback
-     */
-    public function getImageUrl()
+    public function getGalleryImagesAttribute()
     {
-        $primaryImage = $this->images()->where('is_primary', true)->first();
-        return $primaryImage ? $primaryImage->image_url : null;
+        return $this->images->where('is_primary', false);
     }
 
-    /**
-     * Check if product is available for purchase
-     */
-    public function isAvailable()
+    // ===== HELPERS =====
+
+    public function isLowStock(): bool
     {
-        return $this->status === 'active' && $this->stock_quantity > 0;
+        return $this->stock_quantity <= $this->low_stock_threshold;
     }
 
-    /**
-     * Get product rating formatted
-     */
-    public function getRatingAttribute($value)
+    public function isOutOfStock(): bool
     {
-        return round($value, 1);
+        return $this->stock_quantity <= 0;
     }
 
-    /**
-     * Get formatted price with currency symbol
-     */
-    public function getFormattedPriceAttribute()
+    public function getStockStatus(): string
+    {
+        if ($this->isOutOfStock()) {
+            return 'out_of_stock';
+        }
+        if ($this->isLowStock()) {
+            return 'low_stock';
+        }
+        return 'in_stock';
+    }
+
+    public function getStockStatusLabel(): string
+    {
+        return match($this->getStockStatus()) {
+            'out_of_stock' => 'Out of Stock',
+            'low_stock' => 'Low Stock',
+            default => 'In Stock',
+        };
+    }
+
+    public function getStockStatusColor(): string
+    {
+        return match($this->getStockStatus()) {
+            'out_of_stock' => 'red',
+            'low_stock' => 'orange',
+            default => 'green',
+        };
+    }
+
+    public function getAverageRating(): float
+    {
+        return $this->rating ?? 0;
+    }
+
+    public function getFormattedPrice(): string
     {
         return '$' . number_format($this->price, 2);
     }
 
-    /**
-     * Get formatted compare price with currency symbol
-     */
-    public function getFormattedComparePriceAttribute()
+    public function getFormattedDiscountPrice(): ?string
     {
-        return $this->compare_price ? '$' . number_format($this->compare_price, 2) : null;
-    }
-
-    /**
-     * Get formatted discounted price with currency symbol
-     */
-    public function getFormattedDiscountedPriceAttribute()
-    {
-        return '$' . number_format($this->discounted_price, 2);
-    }
-
-    /**
-     * Get product name with vendor
-     */
-    public function getFullNameAttribute()
-    {
-        return $this->name . ' - ' . ($this->vendor->shop_name ?? '');
-    }
-
-    /**
-     * Check if product is new (created within last 30 days)
-     */
-    public function getIsNewArrivalAttribute()
-    {
-        return $this->created_at >= now()->subDays(30);
-    }
-
-    /**
-     * Get low stock alert
-     */
-    public function getLowStockAlertAttribute()
-    {
-        if ($this->stock_quantity <= $this->low_stock_threshold && $this->stock_quantity > 0) {
-            return true;
+        if ($discountPrice = $this->discount_price) {
+            return '$' . number_format($discountPrice, 2);
         }
-        return false;
+        return null;
     }
 
-    /**
-     * Get average rating from reviews
-     */
-    public function getAverageRatingAttribute()
+    public function getDiscountPercentageFormatted(): ?string
     {
-        return $this->reviews()->avg('rating') ?? 0;
-    }
-
-    /**
-     * Get total reviews count
-     */
-    public function getTotalReviewsAttribute()
-    {
-        return $this->reviews()->count();
+        if ($this->discount_percentage) {
+            return $this->discount_percentage . '%';
+        }
+        return null;
     }
 }

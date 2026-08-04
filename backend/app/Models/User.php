@@ -58,10 +58,28 @@ class User extends Authenticatable
         return $this->hasMany(Review::class);
     }
 
+    // Add product relationship for vendor
+    public function products()
+    {
+        return $this->hasMany(Product::class, 'vendor_id');
+    }
+
     // ===== HELPER METHODS =====
+    /**
+     * Check if user is a vendor (with approval check)
+     */
     public function isVendor()
     {
         return $this->role === 'vendor' && $this->vendor && $this->vendor->is_approved;
+    }
+
+    /**
+     * Check if user has vendor role (without approval check)
+     * Use this for route middleware
+     */
+    public function hasVendorRole()
+    {
+        return $this->role === 'vendor' || $this->role === 'admin';
     }
 
     public function isAdmin()
@@ -75,17 +93,11 @@ class User extends Authenticatable
     }
 
     // ===== CART HELPER METHODS =====
-    /**
-     * Get or create cart for the user
-     */
     public function getOrCreateCart()
     {
         return $this->cart()->firstOrCreate([]);
     }
 
-    /**
-     * Get cart count (total items)
-     */
     public function getCartCount()
     {
         $cart = $this->cart()->first();
@@ -95,9 +107,6 @@ class User extends Authenticatable
         return $cart->items()->sum('quantity');
     }
 
-    /**
-     * Get cart total
-     */
     public function getCartTotal()
     {
         $cart = $this->cart()->first();
@@ -107,9 +116,6 @@ class User extends Authenticatable
         return $cart->items()->sum(\DB::raw('quantity * price'));
     }
 
-    /**
-     * Clear user's cart
-     */
     public function clearCart()
     {
         $cart = $this->cart()->first();
@@ -120,9 +126,6 @@ class User extends Authenticatable
         return false;
     }
 
-    /**
-     * Check if user has items in cart
-     */
     public function hasCartItems()
     {
         $cart = $this->cart()->first();
@@ -132,9 +135,6 @@ class User extends Authenticatable
         return $cart->items()->count() > 0;
     }
 
-    /**
-     * Get user's cart items with product details
-     */
     public function getCartItems()
     {
         $cart = $this->cart()->first();

@@ -48,9 +48,19 @@
 
         <!-- Nav Links -->
         <div class="navbar-links">
-          <router-link to="/" class="nav-link">Home</router-link>
+          <!-- For vendors, show Dashboard link -->
+          <router-link v-if="isVendor" to="/vendor/dashboard" class="nav-link vendor-nav-link">
+            📊 Dashboard
+          </router-link>
+          <router-link v-else to="/" class="nav-link" exact>Home</router-link>
+          
           <router-link to="/products" class="nav-link">Products</router-link>
           <router-link to="/about" class="nav-link">About</router-link>
+          
+          <!-- Vendor Quick Link -->
+          <router-link v-if="isVendor" to="/vendor/products" class="nav-link vendor-nav-link">
+            📦 My Store
+          </router-link>
         </div>
 
         <!-- Actions -->
@@ -90,7 +100,7 @@
         </div>
 
         <!-- Mobile Toggle -->
-        <button class="mobile-toggle" @click="isMenuOpen = !isMenuOpen">
+        <button class="mobile-toggle" @click="isMenuOpen = !isMenuOpen" aria-label="Toggle menu">
           <span></span>
           <span></span>
           <span></span>
@@ -115,9 +125,21 @@
 
       <!-- Mobile Menu -->
       <div class="mobile-menu" v-show="isMenuOpen">
-        <router-link to="/" class="mobile-link" @click="isMenuOpen = false">Home</router-link>
+        <!-- For vendors, show Dashboard first -->
+        <router-link v-if="isVendor" to="/vendor/dashboard" class="mobile-link" @click="isMenuOpen = false">
+          📊 Dashboard
+        </router-link>
+        <router-link v-else to="/" class="mobile-link" @click="isMenuOpen = false">Home</router-link>
+        
         <router-link to="/products" class="mobile-link" @click="isMenuOpen = false">Products</router-link>
         <router-link to="/about" class="mobile-link" @click="isMenuOpen = false">About</router-link>
+        
+        <!-- Vendor Store Link -->
+        <router-link v-if="isVendor" to="/vendor/products" class="mobile-link" @click="isMenuOpen = false">
+          📦 My Store
+        </router-link>
+        
+        <div class="mobile-divider"></div>
         
         <!-- Mobile Cart Link -->
         <router-link to="/cart" class="mobile-link" @click="isMenuOpen = false">
@@ -136,6 +158,8 @@
           <i class="bi bi-box me-2"></i>My Orders
         </router-link>
 
+        <div class="mobile-divider"></div>
+
         <!-- Mobile Theme Toggle -->
         <button class="mobile-link mobile-theme-toggle" @click="toggleTheme">
           <i :class="isDark ? 'bi bi-sun-fill' : 'bi bi-moon-fill'"></i>
@@ -147,7 +171,7 @@
           <router-link to="/profile" class="mobile-link" @click="isMenuOpen = false">
             <i class="bi bi-person me-2"></i>{{ userName }}
           </router-link>
-          <button class="mobile-link mobile-logout" @click="logout">
+          <button class="mobile-link mobile-logout" @click="handleLogout">
             <i class="bi bi-box-arrow-right me-2"></i>Logout
           </button>
         </div>
@@ -160,33 +184,31 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch, computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { cartApi, wishlistApi } from '@/services/api'
 
 const router = useRouter()
+const route = useRoute()
+
+// ===== STATE =====
 const isMenuOpen = ref(false)
 const isDark = ref(false)
 const cartCount = ref(0)
 const wishlistCount = ref(0)
 const isLoggedIn = ref(false)
+const isVendor = ref(false)
 const userName = ref('')
 const searchQuery = ref('')
 const showSearchSuggestions = ref(false)
+const allProducts = ref([])
 
-// ===== ALL PRODUCTS FOR SEARCH =====
-const allProducts = ref([
-  { id: 1, name: 'Wireless Noise-Cancelling Headphones', vendor: 'TechShop', price: 49.99, image: null, emoji: '🎧' },
-  { id: 2, name: 'Premium Leather Jacket', vendor: 'FashionHub', price: 89.99, image: null, emoji: '🧥' },
-  { id: 3, name: 'Smart Coffee Maker Pro', vendor: 'HomeGoods', price: 129.99, image: null, emoji: '☕' },
-  { id: 4, name: 'Fitness Smart Watch', vendor: 'GadgetWorld', price: 199.99, image: null, emoji: '⌚' },
-])
-
+// ===== COMPUTED =====
 const filteredSuggestions = computed(() => {
   if (!searchQuery.value) return []
   const query = searchQuery.value.toLowerCase()
   return allProducts.value
-    .filter(p => p.name.toLowerCase().includes(query) || p.vendor.toLowerCase().includes(query))
+    .filter(p => p.name?.toLowerCase().includes(query) || p.vendor?.toLowerCase().includes(query))
     .slice(0, 5)
 })
 
@@ -217,37 +239,40 @@ const applyTheme = (dark) => {
 
 // ===== AUTH FUNCTIONS =====
 const checkAuth = () => {
-  const user = localStorage.getItem('user')
   const token = localStorage.getItem('token')
+  const user = localStorage.getItem('user')
   
   if (token && user) {
     try {
       const userData = JSON.parse(user)
       isLoggedIn.value = true
-      userName.value = userData.name || 'User'
+      isVendor.value = userData.role === 'vendor' || userData.role === 'admin'
+      userName.value = userData.name || userData.store_name || 'User'
     } catch (e) {
       isLoggedIn.value = false
+      isVendor.value = false
       userName.value = ''
     }
   } else {
     isLoggedIn.value = false
+    isVendor.value = false
     userName.value = ''
   }
 }
 
-const logout = () => {
-  if (confirm('Are you sure you want to logout?')) {
-    localStorage.removeItem('token')
-    localStorage.removeItem('user')
-    localStorage.removeItem('shopsphere_cart')
-    localStorage.removeItem('shopsphere_wishlist')
-    isLoggedIn.value = false
-    userName.value = ''
-    cartCount.value = 0
-    wishlistCount.value = 0
-    window.dispatchEvent(new CustomEvent('auth-changed'))
-    router.push('/')
-  }
+const handleLogout = () => {
+  localStorage.removeItem('token')
+  localStorage.removeItem('user')
+  localStorage.removeItem('shopsphere_cart')
+  localStorage.removeItem('shopsphere_wishlist')
+  isLoggedIn.value = false
+  isVendor.value = false
+  userName.value = ''
+  cartCount.value = 0
+  wishlistCount.value = 0
+  isMenuOpen.value = false
+  window.dispatchEvent(new CustomEvent('auth-changed'))
+  router.push('/login')
 }
 
 // ===== CART FUNCTIONS =====
@@ -265,16 +290,15 @@ const updateCartCount = async () => {
     const savedCart = localStorage.getItem('shopsphere_cart')
     if (savedCart) {
       const items = JSON.parse(savedCart)
-      cartCount.value = items.reduce((sum, item) => sum + item.quantity, 0)
+      cartCount.value = items.reduce((sum, item) => sum + (item.quantity || 0), 0)
     } else {
       cartCount.value = 0
     }
   } catch (error) {
-    // Fallback to localStorage
     const savedCart = localStorage.getItem('shopsphere_cart')
     if (savedCart) {
       const items = JSON.parse(savedCart)
-      cartCount.value = items.reduce((sum, item) => sum + item.quantity, 0)
+      cartCount.value = items.reduce((sum, item) => sum + (item.quantity || 0), 0)
     } else {
       cartCount.value = 0
     }
@@ -288,11 +312,10 @@ const updateWishlistCount = async () => {
     if (token) {
       const response = await wishlistApi.getWishlist()
       if (response.data.success) {
-        wishlistCount.value = response.data.data.count || 0
+        wishlistCount.value = response.data.data.count || response.data.data.length || 0
         return
       }
     }
-    // Fallback to localStorage
     const savedWishlist = localStorage.getItem('shopsphere_wishlist')
     if (savedWishlist) {
       const items = JSON.parse(savedWishlist)
@@ -301,7 +324,6 @@ const updateWishlistCount = async () => {
       wishlistCount.value = 0
     }
   } catch (error) {
-    // Fallback to localStorage
     const savedWishlist = localStorage.getItem('shopsphere_wishlist')
     if (savedWishlist) {
       const items = JSON.parse(savedWishlist)
@@ -312,61 +334,29 @@ const updateWishlistCount = async () => {
   }
 }
 
-// ===== FORCE REFRESH COUNTS =====
-const forceRefreshCounts = async () => {
-  console.log('🔄 Force refreshing counts...')
-  
-  const token = localStorage.getItem('token')
-  if (token) {
-    try {
-      const [cartResponse, wishlistResponse] = await Promise.all([
-        cartApi.getCartTotal(),
-        wishlistApi.getWishlist()
-      ])
-      
-      if (cartResponse.data.success) {
-        cartCount.value = cartResponse.data.data.count || 0
-        console.log('✅ Cart count from API:', cartCount.value)
-      }
-      if (wishlistResponse.data.success) {
-        wishlistCount.value = wishlistResponse.data.data.count || 0
-        console.log('✅ Wishlist count from API:', wishlistCount.value)
-      }
-      return
-    } catch (error) {
-      console.log('⚠️ API refresh failed, using localStorage')
-    }
-  }
-  
-  // Fallback to localStorage
-  const savedCart = localStorage.getItem('shopsphere_cart')
-  if (savedCart) {
-    const items = JSON.parse(savedCart)
-    cartCount.value = items.reduce((sum, item) => sum + item.quantity, 0)
-  } else {
-    cartCount.value = 0
-  }
-  
-  const savedWishlist = localStorage.getItem('shopsphere_wishlist')
-  if (savedWishlist) {
-    const items = JSON.parse(savedWishlist)
-    wishlistCount.value = items.length
-  } else {
-    wishlistCount.value = 0
-  }
-  console.log('✅ Counts from localStorage:', { cart: cartCount.value, wishlist: wishlistCount.value })
-}
-
 // ===== NAVIGATION FUNCTIONS =====
-const goToCart = () => router.push('/cart')
-const goToWishlist = () => router.push('/wishlist')
-const goToOrders = () => router.push('/orders')
-const goToProfile = () => router.push('/profile')
+const goToCart = () => {
+  isMenuOpen.value = false
+  router.push('/cart')
+}
+const goToWishlist = () => {
+  isMenuOpen.value = false
+  router.push('/wishlist')
+}
+const goToOrders = () => {
+  isMenuOpen.value = false
+  router.push('/orders')
+}
+const goToProfile = () => {
+  isMenuOpen.value = false
+  router.push('/profile')
+}
 
 // ===== SEARCH FUNCTIONS =====
 const performSearch = () => {
   if (searchQuery.value.trim()) {
     showSearchSuggestions.value = false
+    isMenuOpen.value = false
     router.push({ path: '/products', query: { search: searchQuery.value.trim() } })
   }
 }
@@ -381,8 +371,24 @@ const hideSearchSuggestions = () => {
   setTimeout(() => { showSearchSuggestions.value = false }, 200)
 }
 
-// ===== WATCHERS =====
-watch(isDark, () => applyTheme(isDark.value))
+// ===== LOAD PRODUCTS FOR SEARCH =====
+const loadProducts = async () => {
+  try {
+    const response = await fetch('http://localhost:8000/api/products')
+    if (response.ok) {
+      const data = await response.json()
+      allProducts.value = data.data || []
+    }
+  } catch (error) {
+    // Fallback products
+    allProducts.value = [
+      { id: 1, name: 'Wireless Headphones', vendor: 'TechShop', price: 49.99, emoji: '🎧' },
+      { id: 2, name: 'Leather Jacket', vendor: 'FashionHub', price: 89.99, emoji: '🧥' },
+      { id: 3, name: 'Coffee Maker Pro', vendor: 'HomeGoods', price: 129.99, emoji: '☕' },
+      { id: 4, name: 'Smart Watch', vendor: 'GadgetWorld', price: 199.99, emoji: '⌚' },
+    ]
+  }
+}
 
 // ===== LIFECYCLE =====
 onMounted(() => {
@@ -391,48 +397,41 @@ onMounted(() => {
   checkAuth()
   updateCartCount()
   updateWishlistCount()
+  loadProducts()
   
-  // Force refresh after 500ms
-  setTimeout(forceRefreshCounts, 500)
-  
-  // ===== FIX: Refresh when page becomes visible =====
-  document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) {
-      console.log('🔄 Page became visible, refreshing counts...')
-      forceRefreshCounts()
-    }
-  })
-  
-  window.addEventListener('storage', () => { 
-    updateCartCount()
-    updateWishlistCount()
-    checkAuth() 
-  })
-  
-  // Listen for cart-updated event with count
-  window.addEventListener('cart-updated', (event) => {
-    console.log('📦 Cart updated event received:', event.detail)
-    if (event.detail?.count !== undefined) {
-      cartCount.value = event.detail.count
-    } else {
-      forceRefreshCounts()
-    }
-  })
-  
-  // Listen for wishlist-updated event with count
-  window.addEventListener('wishlist-updated', (event) => {
-    console.log('❤️ Wishlist updated event received:', event.detail)
-    if (event.detail?.count !== undefined) {
-      wishlistCount.value = event.detail.count
-    } else {
-      forceRefreshCounts()
-    }
-  })
-  
+  // Listen for events
   window.addEventListener('auth-changed', () => {
     checkAuth()
-    forceRefreshCounts()
+    updateCartCount()
+    updateWishlistCount()
   })
+  
+  window.addEventListener('cart-updated', () => {
+    updateCartCount()
+  })
+  
+  window.addEventListener('wishlist-updated', () => {
+    updateWishlistCount()
+  })
+  
+  window.addEventListener('storage', () => {
+    checkAuth()
+    updateCartCount()
+    updateWishlistCount()
+  })
+})
+
+onUnmounted(() => {
+  window.removeEventListener('auth-changed', checkAuth)
+  window.removeEventListener('cart-updated', updateCartCount)
+  window.removeEventListener('wishlist-updated', updateWishlistCount)
+  window.removeEventListener('storage', checkAuth)
+})
+
+// Watch route changes to update active states
+watch(() => route.path, () => {
+  // Close mobile menu on route change
+  isMenuOpen.value = false
 })
 </script>
 
@@ -445,6 +444,12 @@ onMounted(() => {
   top: 0;
   z-index: 1000;
   transition: var(--transition);
+}
+
+.container-custom {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 20px;
 }
 
 .navbar-content {
@@ -462,6 +467,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 .logo-icon {
@@ -627,16 +633,17 @@ onMounted(() => {
 .navbar-links {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
 }
 
 .nav-link {
-  padding: 8px 20px;
+  padding: 8px 16px;
   border-radius: 50px;
   text-decoration: none;
   color: var(--text-secondary);
   font-weight: 500;
   transition: var(--transition);
+  font-size: 14px;
 }
 
 .nav-link:hover {
@@ -649,11 +656,21 @@ onMounted(() => {
   background: rgba(102, 126, 234, 0.1);
 }
 
+.nav-link.vendor-nav-link {
+  color: #667eea;
+  background: rgba(102, 126, 234, 0.06);
+}
+
+.nav-link.vendor-nav-link:hover {
+  background: rgba(102, 126, 234, 0.12);
+}
+
 /* ===== ACTIONS ===== */
 .navbar-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 .action-btn {
@@ -787,11 +804,23 @@ onMounted(() => {
   transition: var(--transition);
 }
 
+.mobile-toggle:hover span {
+  background: #667eea;
+}
+
 .mobile-menu {
   display: none;
   flex-direction: column;
   padding: 16px 0;
   gap: 4px;
+  border-top: 1px solid var(--border-color);
+  margin-top: 8px;
+}
+
+.mobile-divider {
+  height: 1px;
+  background: var(--border-color);
+  margin: 8px 0;
 }
 
 .mobile-link {
@@ -870,11 +899,13 @@ onMounted(() => {
 }
 
 /* ===== RESPONSIVE ===== */
-@media (max-width: 768px) {
+@media (max-width: 992px) {
   .navbar-links {
     display: none;
   }
-  
+}
+
+@media (max-width: 768px) {
   .navbar-actions .btn-primary-modern {
     display: none;
   }
@@ -894,6 +925,25 @@ onMounted(() => {
   .search-bar:not(.mobile) {
     display: none;
   }
+  
+  .container-custom {
+    padding: 0 16px;
+  }
+  
+  .navbar-actions .action-btn {
+    width: 34px;
+    height: 34px;
+    font-size: 1rem;
+  }
+  
+  .profile-btn {
+    padding: 4px 12px !important;
+    font-size: 12px !important;
+  }
+  
+  .profile-btn .user-name {
+    max-width: 60px;
+  }
 }
 
 @media (min-width: 769px) {
@@ -901,6 +951,46 @@ onMounted(() => {
   .mobile-menu,
   .mobile-search {
     display: none !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .navbar-logo {
+    font-size: 1.2rem;
+  }
+  
+  .logo-icon {
+    font-size: 1.4rem;
+  }
+  
+  .navbar-actions .action-btn {
+    width: 30px;
+    height: 30px;
+    font-size: 0.9rem;
+  }
+  
+  .cart-badge,
+  .wishlist-badge {
+    min-width: 16px;
+    height: 16px;
+    font-size: 8px;
+    top: -3px;
+    right: -3px;
+  }
+  
+  .search-bar.mobile input {
+    font-size: 0.85rem;
+    padding: 8px 12px 8px 36px;
+  }
+  
+  .search-bar.mobile i {
+    font-size: 0.9rem;
+    left: 12px;
+  }
+  
+  .search-bar.mobile .search-btn {
+    width: 30px;
+    height: 30px;
   }
 }
 

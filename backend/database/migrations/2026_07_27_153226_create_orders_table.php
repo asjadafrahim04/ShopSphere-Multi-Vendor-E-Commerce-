@@ -15,6 +15,10 @@ return new class extends Migration
     {
         Schema::create('orders', function (Blueprint $table) {
             $table->id();
+            $table->foreignId('user_id')->constrained('users')->onDelete('cascade');
+            $table->foreignId('vendor_id')->nullable()->constrained('users')->onDelete('set null');
+            $table->string('status')->default('pending');
+            $table->decimal('total_amount', 10, 2)->default(0);
             $table->timestamps();
         });
     }
