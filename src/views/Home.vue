@@ -4,7 +4,6 @@
     <section class="hero-banner-section">
       <div class="container-custom">
         <div class="hero-banner-wrapper">
-          <!-- Banner Container -->
           <div class="banner-container" @mouseenter="pauseAutoplay" @mouseleave="startAutoplay">
             <div 
               class="banner-track"
@@ -33,7 +32,6 @@
               </div>
             </div>
 
-            <!-- Navigation Arrows -->
             <button class="banner-arrow prev" @click="prevSlide">
               <i class="bi bi-chevron-left"></i>
             </button>
@@ -41,7 +39,6 @@
               <i class="bi bi-chevron-right"></i>
             </button>
 
-            <!-- Dots Indicator -->
             <div class="banner-dots">
               <button 
                 v-for="(slide, index) in banners" 
@@ -52,7 +49,6 @@
               ></button>
             </div>
 
-            <!-- Slide Counter -->
             <div class="slide-counter">
               {{ currentSlide + 1 }} / {{ banners.length }}
             </div>
@@ -72,7 +68,12 @@
           <button class="btn-outline-modern" @click="goToProducts">View All →</button>
         </div>
         <div class="categories-grid">
-          <div class="category-card-modern" v-for="category in categories" :key="category.id" @click="filterByCategory(category.name)">
+          <div 
+            class="category-card-modern" 
+            v-for="category in categories" 
+            :key="category.id" 
+            @click="filterByCategory(category.name)"
+          >
             <div class="category-icon">
               <i :class="category.icon"></i>
             </div>
@@ -84,7 +85,7 @@
       </div>
     </section>
 
-    <!-- ===== FEATURED PRODUCTS ===== -->
+    <!-- ===== FEATURED PRODUCTS (REAL DATA FROM API) ===== -->
     <section class="section-modern section-featured">
       <div class="container-custom">
         <div class="section-header">
@@ -94,7 +95,18 @@
           </div>
           <button class="btn-outline-modern" @click="goToProducts">View All →</button>
         </div>
-        <div class="products-grid">
+        
+        <!-- Loading State -->
+        <div v-if="loading" class="loading-grid">
+          <div v-for="n in 4" :key="n" class="product-card-skeleton">
+            <div class="skeleton-image"></div>
+            <div class="skeleton-text"></div>
+            <div class="skeleton-text short"></div>
+          </div>
+        </div>
+
+        <!-- Products Grid -->
+        <div v-else-if="featuredProducts.length > 0" class="products-grid">
           <ProductCard 
             v-for="product in featuredProducts" 
             :key="product.id"
@@ -103,6 +115,13 @@
             @wishlist-toggle="handleWishlistToggle"
             @view-product="handleViewProduct"
           />
+        </div>
+
+        <!-- Empty State -->
+        <div v-else class="empty-state">
+          <span class="empty-icon">📦</span>
+          <h3>No Products Available</h3>
+          <p>Check back later for new products from our vendors.</p>
         </div>
       </div>
     </section>
@@ -228,7 +247,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import ProductCard from '../components/ProductCard.vue'
 
@@ -237,6 +256,43 @@ const searchQuery = ref('')
 const showWelcomePopup = ref(false)
 const currentSlide = ref(0)
 const autoplayInterval = ref(null)
+
+// ===== PRODUCTS FROM API =====
+const allProducts = ref([])
+const loading = ref(true)
+
+// ===== FETCH PRODUCTS FROM API =====
+const fetchProducts = async () => {
+  loading.value = true
+  try {
+    const response = await fetch('http://localhost:8000/api/products')
+    const data = await response.json()
+    
+    console.log('✅ API Response:', data)
+    
+    if (data.success) {
+      // Products are inside data.data.data
+      allProducts.value = data.data.data || []
+      console.log('✅ Products loaded:', allProducts.value.length)
+    } else {
+      console.error('❌ API error:', data)
+    }
+  } catch (error) {
+    console.error('❌ Error fetching products:', error)
+  } finally {
+    loading.value = false
+  }
+}
+
+// ===== COMPUTED: Featured Products (First 4) =====
+const featuredProducts = computed(() => {
+  return allProducts.value.slice(0, 4)
+})
+
+// ===== COMPUTED: Total Products Count =====
+const totalProducts = computed(() => {
+  return allProducts.value.length
+})
 
 // ===== BANNER DATA =====
 const banners = ref([
@@ -333,83 +389,15 @@ const topVendors = ref([
 ])
 
 // ===== CATEGORIES DATA =====
-const categories = [
-  { id: 1, name: 'Electronics', icon: 'bi bi-laptop', count: 120 },
-  { id: 2, name: 'Fashion', icon: 'bi bi-bag', count: 85 },
-  { id: 3, name: 'Home & Living', icon: 'bi bi-house', count: 64 },
-  { id: 4, name: 'Beauty', icon: 'bi bi-flower1', count: 200 },
-  { id: 5, name: 'Sports', icon: 'bi bi-bicycle', count: 45 },
-  { id: 6, name: 'Books', icon: 'bi bi-book', count: 78 },
-  { id: 7, name: 'Toys & Kids', icon: 'bi bi-toy', count: 56 },
-  { id: 8, name: 'Food & Grocery', icon: 'bi bi-cup-straw', count: 34 },
-]
-
-// ===== FEATURED PRODUCTS DATA =====
-const featuredProducts = ref([
-  { 
-    id: 1, 
-    name: 'Wireless Noise-Cancelling Headphones', 
-    vendor: 'TechShop', 
-    category: 'Electronics',
-    price: 49.99,
-    originalPrice: 79.99,
-    rating: 4.8, 
-    reviews: 234,
-    image: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=400&h=400&fit=crop',
-    isNew: true,
-    discount: 38,
-    description: 'Premium wireless headphones with active noise cancellation.',
-    stock: 'In Stock',
-    features: ['Active Noise Cancellation', '30 Hour Battery', 'Bluetooth 5.0']
-  },
-  { 
-    id: 2, 
-    name: 'Premium Leather Jacket', 
-    vendor: 'FashionHub', 
-    category: 'Fashion',
-    price: 89.99,
-    originalPrice: null,
-    rating: 4.5, 
-    reviews: 189,
-    image: 'https://images.unsplash.com/photo-1551028719-00167b16eac5?w=400&h=400&fit=crop',
-    isNew: false,
-    discount: null,
-    description: 'Genuine leather jacket with premium stitching.',
-    stock: 'In Stock',
-    features: ['Genuine Leather', 'Classic Design', 'Multiple Colors']
-  },
-  { 
-    id: 3, 
-    name: 'Smart Coffee Maker Pro', 
-    vendor: 'HomeGoods', 
-    category: 'Home & Living',
-    price: 129.99,
-    originalPrice: 159.99,
-    rating: 4.7, 
-    reviews: 312,
-    image: 'https://images.unsplash.com/photo-1565452344518-47faca79dc69?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NHx8Q29mZmVlJTIwTWFrZXJ8ZW58MHx8MHx8fDA%3D',
-    isNew: true,
-    discount: 19,
-    description: 'Programmable coffee maker with smart features.',
-    stock: 'In Stock',
-    features: ['Programmable', 'Temperature Control', 'Smart Features']
-  },
-  { 
-    id: 4, 
-    name: 'Fitness Smart Watch', 
-    vendor: 'GadgetWorld', 
-    category: 'Electronics',
-    price: 199.99,
-    originalPrice: 249.99,
-    rating: 4.9, 
-    reviews: 456,
-    image: 'https://images.unsplash.com/photo-1660844817855-3ecc7ef21f12?q=80&w=486&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D',
-    isNew: false,
-    discount: 20,
-    description: 'Advanced fitness tracker with heart rate monitor.',
-    stock: 'In Stock',
-    features: ['Heart Rate Monitor', 'GPS Tracking', 'Water Resistant']
-  },
+const categories = ref([
+  { id: 1, name: 'Electronics', icon: 'bi bi-laptop', count: 0 },
+  { id: 2, name: 'Fashion', icon: 'bi bi-bag', count: 0 },
+  { id: 3, name: 'Home & Living', icon: 'bi bi-house', count: 0 },
+  { id: 4, name: 'Beauty', icon: 'bi bi-flower1', count: 0 },
+  { id: 5, name: 'Sports', icon: 'bi bi-bicycle', count: 0 },
+  { id: 6, name: 'Books', icon: 'bi bi-book', count: 0 },
+  { id: 7, name: 'Toys & Kids', icon: 'bi bi-toy', count: 0 },
+  { id: 8, name: 'Food & Grocery', icon: 'bi bi-cup-straw', count: 0 },
 ])
 
 // ===== FEATURES DATA =====
@@ -495,7 +483,7 @@ const filterByCategory = (category) => {
 }
 
 const goToVendor = () => {
-  alert('🚀 Vendor registration coming soon!')
+  router.push('/vendor/register')
 }
 
 // ===== PRODUCT EVENT HANDLERS =====
@@ -519,6 +507,7 @@ const handleViewProduct = (product) => {
 onMounted(() => {
   checkAndShowPopup()
   startAutoplay()
+  fetchProducts()
 })
 
 onUnmounted(() => {
@@ -527,13 +516,80 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+/* ===== ALL YOUR EXISTING STYLES REMAIN THE SAME ===== */
 .home-wrapper {
   width: 100%;
   max-width: 100%;
   overflow-x: hidden;
 }
 
-/* ===== HERO BANNER SECTION ===== */
+/* ===== LOADING SKELETON ===== */
+.loading-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 24px;
+}
+
+.product-card-skeleton {
+  background: var(--bg-card);
+  border-radius: var(--radius);
+  padding: 16px;
+  border: 1px solid var(--border-color);
+}
+
+.skeleton-image {
+  width: 100%;
+  height: 200px;
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 8px;
+}
+
+.skeleton-text {
+  height: 16px;
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 4px;
+  margin-top: 12px;
+}
+
+.skeleton-text.short {
+  width: 60%;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ===== EMPTY STATE ===== */
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  background: var(--bg-card);
+  border-radius: var(--radius);
+  border: 1px solid var(--border-color);
+}
+
+.empty-icon {
+  font-size: 64px;
+  display: block;
+  margin-bottom: 16px;
+}
+
+.empty-state h3 {
+  font-size: 20px;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.empty-state p {
+  color: var(--text-muted);
+}
+
+/* ===== HERO BANNER ===== */
 .hero-banner-section {
   padding: 20px 0 10px;
   background: var(--bg-primary);
@@ -675,7 +731,6 @@ onUnmounted(() => {
   z-index: 2;
 }
 
-/* ===== BANNER ARROWS ===== */
 .banner-arrow {
   position: absolute;
   top: 50%;
@@ -714,7 +769,6 @@ onUnmounted(() => {
   right: 16px;
 }
 
-/* ===== BANNER DOTS ===== */
 .banner-dots {
   position: absolute;
   bottom: 16px;
@@ -746,7 +800,6 @@ onUnmounted(() => {
   background: rgba(255, 255, 255, 0.7);
 }
 
-/* ===== SLIDE COUNTER ===== */
 .slide-counter {
   position: absolute;
   bottom: 16px;
@@ -766,63 +819,18 @@ onUnmounted(() => {
   padding: 80px 0;
 }
 
-/* ===== FEATURED PRODUCTS - Light Mode Fix ===== */
 .section-featured {
   background: #f8f9fc;
 }
 
-/* ===== TOP VENDORS - Light Mode Fix ===== */
 .section-vendors {
   background: #ffffff;
 }
 
-/* ===== WHY CHOOSE US - Light Mode Fix ===== */
 .section-why {
   background: #f8f9fc;
 }
 
-/* ===== DARK MODE OVERRIDES ===== */
-@media (prefers-color-scheme: dark) {
-  .section-featured {
-    background: #1a1932;
-  }
-  
-  .section-vendors {
-    background: #0f0e17;
-  }
-  
-  .section-why {
-    background: #1a1932;
-  }
-}
-
-/* Manual dark mode class support */
-html.dark .section-featured {
-  background: #1a1932;
-}
-
-html.dark .section-vendors {
-  background: #0f0e17;
-}
-
-html.dark .section-why {
-  background: #1a1932;
-}
-
-/* Manual light mode class support */
-html.light .section-featured {
-  background: #f8f9fc;
-}
-
-html.light .section-vendors {
-  background: #ffffff;
-}
-
-html.light .section-why {
-  background: #f8f9fc;
-}
-
-/* ===== SECTION HEADER ===== */
 .section-header {
   display: flex;
   justify-content: space-between;
@@ -925,7 +933,7 @@ html.light .section-why {
   gap: 24px;
 }
 
-/* ===== TOP VENDORS ===== */
+/* ===== VENDORS ===== */
 .vendors-grid {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
@@ -1297,6 +1305,31 @@ html.light .section-why {
   font-size: 0.9rem;
 }
 
+/* ===== DARK MODE ===== */
+html.dark .section-featured {
+  background: #1a1932;
+}
+
+html.dark .section-vendors {
+  background: #0f0e17;
+}
+
+html.dark .section-why {
+  background: #1a1932;
+}
+
+html.light .section-featured {
+  background: #f8f9fc;
+}
+
+html.light .section-vendors {
+  background: #ffffff;
+}
+
+html.light .section-why {
+  background: #f8f9fc;
+}
+
 /* ===== RESPONSIVE ===== */
 @media (max-width: 1024px) {
   .banner-content {
@@ -1321,6 +1354,10 @@ html.light .section-why {
   }
   
   .features-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .loading-grid {
     grid-template-columns: repeat(2, 1fr);
   }
 }
@@ -1425,6 +1462,11 @@ html.light .section-why {
   .popup-benefits {
     grid-template-columns: 1fr;
   }
+  
+  .loading-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
 }
 
 @media (max-width: 480px) {
@@ -1472,6 +1514,11 @@ html.light .section-why {
   }
   
   .vendors-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  
+  .loading-grid {
     grid-template-columns: 1fr 1fr;
     gap: 12px;
   }

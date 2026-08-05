@@ -208,6 +208,31 @@ class Product extends Model
         return $this->stock_quantity <= 0;
     }
 
+    // ✅ ADDED: Check if product has enough stock
+    public function hasStock($quantity = 1): bool
+    {
+        return $this->stock_quantity >= $quantity;
+    }
+
+    // ✅ ADDED: Decrease stock quantity
+    public function decreaseStock($quantity = 1): bool
+    {
+        if ($this->stock_quantity >= $quantity) {
+            $this->stock_quantity -= $quantity;
+            $this->save();
+            return true;
+        }
+        return false;
+    }
+
+    // ✅ ADDED: Increase stock quantity
+    public function increaseStock($quantity = 1): bool
+    {
+        $this->stock_quantity += $quantity;
+        $this->save();
+        return true;
+    }
+
     public function getStockStatus(): string
     {
         if ($this->isOutOfStock()) {

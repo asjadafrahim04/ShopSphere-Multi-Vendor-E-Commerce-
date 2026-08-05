@@ -1,5 +1,4 @@
 <?php
-// app/Http/Controllers/Api/VendorController.php
 
 namespace App\Http\Controllers\Api;
 
@@ -11,6 +10,7 @@ use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
 
 class VendorController extends Controller
 {
@@ -98,7 +98,6 @@ class VendorController extends Controller
             ->limit(12)
             ->get()
             ->map(function($item) {
-                // Format month names for better display
                 $monthName = date('F', mktime(0, 0, 0, $item->month, 1));
                 $item->month_name = $monthName;
                 $item->label = $monthName . ' ' . $item->year;
@@ -116,7 +115,7 @@ class VendorController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            \Log::error('Vendor dashboard error: ' . $e->getMessage());
+            Log::error('Vendor dashboard error: ' . $e->getMessage());
             
             return response()->json([
                 'success' => false,
@@ -136,6 +135,7 @@ class VendorController extends Controller
             $perPage = $request->per_page ?? 15;
             $status = $request->status;
             $search = $request->search;
+            $sort = $request->sort ?? 'newest';
 
             $query = Order::whereHas('items.product', function($q) use ($vendorId) {
                 $q->where('vendor_id', $vendorId);
@@ -147,7 +147,7 @@ class VendorController extends Controller
 
             if ($search) {
                 $query->where(function($q) use ($search) {
-                    $q->where('id', 'LIKE', "%{$search}%")
+                    $q->where('order_number', 'LIKE', "%{$search}%")
                       ->orWhereHas('user', function($userQuery) use ($search) {
                           $userQuery->where('name', 'LIKE', "%{$search}%")
                                     ->orWhere('email', 'LIKE', "%{$search}%");
@@ -155,17 +155,33 @@ class VendorController extends Controller
                 });
             }
 
+            // Sort
+            switch ($sort) {
+                case 'newest':
+                    $query->orderBy('created_at', 'desc');
+                    break;
+                case 'oldest':
+                    $query->orderBy('created_at', 'asc');
+                    break;
+                case 'total_high':
+                    $query->orderBy('total', 'desc');
+                    break;
+                case 'total_low':
+                    $query->orderBy('total', 'asc');
+                    break;
+                default:
+                    $query->orderBy('created_at', 'desc');
+            }
+
+            // ✅ FIX: Removed 'shippingAddress' from with()
             $orders = $query->with([
                 'user',
                 'items' => function($q) use ($vendorId) {
                     $q->whereHas('product', function($query) use ($vendorId) {
                         $query->where('vendor_id', $vendorId);
-                    })->with('product');
-                },
-                'shippingAddress'
-            ])
-            ->orderBy('created_at', 'desc')
-            ->paginate($perPage);
+                    })->with('product.images');
+                }
+            ])->paginate($perPage);
 
             // Calculate vendor-specific totals for each order
             $orders->getCollection()->transform(function($order) {
@@ -188,12 +204,64 @@ class VendorController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            \Log::error('Vendor orders error: ' . $e->getMessage());
+            Log::error('Vendor orders error: ' . $e->getMessage());
             
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to load orders',
+                'message' => 'Failed to load orders: ' . $e->getMessage(),
                 'error' => config('app.debug') ? $e->getMessage() : null
+            ], 500);
+        }
+    }
+
+    /**
+     * Get single order details for vendor
+     */
+    public function orderDetails(Request $request, $id)
+    {
+        try {
+            $vendorId = auth()->id();
+
+            // ✅ FIX: Removed 'shippingAddress' from with()
+            $order = Order::with([
+                'user',
+                'items' => function($q) use ($vendorId) {
+                    $q->whereHas('product', function($query) use ($vendorId) {
+                        $query->where('vendor_id', $vendorId);
+                    })->with('product.images');
+                }
+            ])->whereHas('items.product', function($q) use ($vendorId) {
+                $q->where('vendor_id', $vendorId);
+            })->find($id);
+
+            if (!$order) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Order not found'
+                ], 404);
+            }
+
+            // Calculate vendor totals
+            $vendorItems = $order->items->filter(function($item) use ($vendorId) {
+                return $item->product && $item->product->vendor_id === $vendorId;
+            });
+            
+            $order->vendor_subtotal = $vendorItems->sum(function($item) {
+                return $item->price * $item->quantity;
+            });
+            
+            $order->vendor_items_count = $vendorItems->count();
+
+            return response()->json([
+                'success' => true,
+                'data' => $order
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Vendor order details error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch order details'
             ], 500);
         }
     }
@@ -226,7 +294,7 @@ class VendorController extends Controller
             $order->update(['status' => $validated['status']]);
 
             // Log the status change
-            \Log::info('Order status updated', [
+            Log::info('Order status updated', [
                 'order_id' => $orderId,
                 'vendor_id' => $vendorId,
                 'new_status' => $validated['status']
@@ -245,7 +313,7 @@ class VendorController extends Controller
                 'errors' => $e->errors()
             ], 422);
         } catch (\Exception $e) {
-            \Log::error('Order status update error: ' . $e->getMessage());
+            Log::error('Order status update error: ' . $e->getMessage());
             
             return response()->json([
                 'success' => false,
@@ -253,6 +321,278 @@ class VendorController extends Controller
                 'error' => config('app.debug') ? $e->getMessage() : null
             ], 500);
         }
+    }
+
+    /**
+     * Get order analytics for vendor
+     */
+    public function orderAnalytics(Request $request)
+    {
+        try {
+            $vendorId = auth()->id();
+            $period = $request->period ?? 'month';
+
+            $startDate = now();
+            switch ($period) {
+                case 'week':
+                    $startDate = now()->subWeek();
+                    break;
+                case 'month':
+                    $startDate = now()->subMonth();
+                    break;
+                case 'year':
+                    $startDate = now()->subYear();
+                    break;
+                default:
+                    $startDate = now()->subMonth();
+            }
+
+            // Get orders for vendor
+            $orders = Order::whereHas('items.product', function($q) use ($vendorId) {
+                $q->where('vendor_id', $vendorId);
+            })
+            ->where('created_at', '>=', $startDate)
+            ->get();
+
+            // Calculate analytics
+            $totalOrders = $orders->count();
+            $totalRevenue = $orders->sum('total');
+            $totalItems = OrderItem::whereHas('product', function($q) use ($vendorId) {
+                $q->where('vendor_id', $vendorId);
+            })
+            ->whereHas('order', function($q) use ($startDate) {
+                $q->where('created_at', '>=', $startDate);
+            })
+            ->sum('quantity');
+
+            // Status breakdown
+            $statusBreakdown = [
+                'pending' => 0,
+                'processing' => 0,
+                'shipped' => 0,
+                'delivered' => 0,
+                'cancelled' => 0
+            ];
+
+            foreach ($orders as $order) {
+                if (isset($statusBreakdown[$order->status])) {
+                    $statusBreakdown[$order->status]++;
+                }
+            }
+
+            // Daily sales data for chart
+            $dailySales = Order::whereHas('items.product', function($q) use ($vendorId) {
+                $q->where('vendor_id', $vendorId);
+            })
+            ->where('created_at', '>=', $startDate)
+            ->select(
+                DB::raw('DATE(created_at) as date'),
+                DB::raw('COUNT(*) as order_count'),
+                DB::raw('SUM(total) as revenue')
+            )
+            ->groupBy('date')
+            ->orderBy('date', 'asc')
+            ->get();
+
+            // Average order value
+            $avgOrderValue = $totalOrders > 0 ? $totalRevenue / $totalOrders : 0;
+
+            // Recent orders (last 5)
+            $recentOrders = Order::whereHas('items.product', function($q) use ($vendorId) {
+                $q->where('vendor_id', $vendorId);
+            })
+            ->with('user')
+            ->orderBy('created_at', 'desc')
+            ->limit(5)
+            ->get();
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'period' => $period,
+                    'start_date' => $startDate->format('Y-m-d'),
+                    'end_date' => now()->format('Y-m-d'),
+                    'total_orders' => $totalOrders,
+                    'total_revenue' => $totalRevenue,
+                    'total_items_sold' => $totalItems,
+                    'average_order_value' => $avgOrderValue,
+                    'status_breakdown' => $statusBreakdown,
+                    'daily_sales' => $dailySales,
+                    'recent_orders' => $recentOrders,
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Order analytics error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch order analytics'
+            ], 500);
+        }
+    }
+
+    /**
+     * Get vendor sales report
+     */
+    public function salesReport(Request $request)
+    {
+        try {
+            $vendorId = auth()->id();
+            $period = $request->period ?? 'month';
+            $format = $request->format ?? 'json';
+
+            $startDate = now();
+            switch ($period) {
+                case 'day':
+                    $startDate = now()->subDay();
+                    break;
+                case 'week':
+                    $startDate = now()->subWeek();
+                    break;
+                case 'month':
+                    $startDate = now()->subMonth();
+                    break;
+                case 'year':
+                    $startDate = now()->subYear();
+                    break;
+                default:
+                    $startDate = now()->subMonth();
+            }
+
+            // Sales by product
+            $productSales = OrderItem::whereHas('product', function($q) use ($vendorId) {
+                $q->where('vendor_id', $vendorId);
+            })
+            ->whereHas('order', function($q) use ($startDate) {
+                $q->where('created_at', '>=', $startDate)
+                  ->where('status', '!=', 'cancelled');
+            })
+            ->with('product')
+            ->select(
+                'product_id',
+                DB::raw('SUM(quantity) as total_quantity'),
+                DB::raw('SUM(total) as total_revenue')
+            )
+            ->groupBy('product_id')
+            ->orderBy('total_revenue', 'desc')
+            ->get();
+
+            // Sales by category
+            $categorySales = OrderItem::whereHas('product', function($q) use ($vendorId) {
+                $q->where('vendor_id', $vendorId);
+            })
+            ->whereHas('order', function($q) use ($startDate) {
+                $q->where('created_at', '>=', $startDate)
+                  ->where('status', '!=', 'cancelled');
+            })
+            ->join('products', 'order_items.product_id', '=', 'products.id')
+            ->join('categories', 'products.category_id', '=', 'categories.id')
+            ->select(
+                'categories.id as category_id',
+                'categories.name as category_name',
+                DB::raw('SUM(order_items.quantity) as total_quantity'),
+                DB::raw('SUM(order_items.total) as total_revenue')
+            )
+            ->groupBy('categories.id', 'categories.name')
+            ->orderBy('total_revenue', 'desc')
+            ->get();
+
+            // Monthly sales trend
+            $monthlyTrend = Order::whereHas('items.product', function($q) use ($vendorId) {
+                $q->where('vendor_id', $vendorId);
+            })
+            ->where('created_at', '>=', $startDate)
+            ->where('status', '!=', 'cancelled')
+            ->select(
+                DB::raw('YEAR(created_at) as year'),
+                DB::raw('MONTH(created_at) as month'),
+                DB::raw('COUNT(*) as order_count'),
+                DB::raw('SUM(total) as revenue')
+            )
+            ->groupBy('year', 'month')
+            ->orderBy('year', 'desc')
+            ->orderBy('month', 'desc')
+            ->limit(12)
+            ->get();
+
+            $reportData = [
+                'period' => $period,
+                'start_date' => $startDate->format('Y-m-d'),
+                'end_date' => now()->format('Y-m-d'),
+                'product_sales' => $productSales,
+                'category_sales' => $categorySales,
+                'monthly_trend' => $monthlyTrend,
+                'summary' => [
+                    'total_products_sold' => $productSales->sum('total_quantity'),
+                    'total_revenue' => $productSales->sum('total_revenue'),
+                    'total_categories' => $categorySales->count(),
+                    'top_product' => $productSales->first()?->product?->name ?? 'N/A',
+                ]
+            ];
+
+            // If CSV format is requested
+            if ($format === 'csv') {
+                return $this->exportSalesCSV($reportData);
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => $reportData
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Sales report error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to generate sales report'
+            ], 500);
+        }
+    }
+
+    /**
+     * Export sales report as CSV
+     */
+    private function exportSalesCSV($data)
+    {
+        $filename = "sales_report_{$data['period']}_" . date('Y-m-d') . ".csv";
+        
+        $headers = [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => "attachment; filename=\"$filename\"",
+        ];
+
+        $callback = function() use ($data) {
+            $handle = fopen('php://output', 'w');
+            
+            // Add headers
+            fputcsv($handle, ['Sales Report - ShopSphere']);
+            fputcsv($handle, ['Period', $data['period']]);
+            fputcsv($handle, ['Start Date', $data['start_date']]);
+            fputcsv($handle, ['End Date', $data['end_date']]);
+            fputcsv($handle, []);
+            
+            // Summary
+            fputcsv($handle, ['SUMMARY']);
+            fputcsv($handle, ['Total Products Sold', $data['summary']['total_products_sold']]);
+            fputcsv($handle, ['Total Revenue', '$' . number_format($data['summary']['total_revenue'], 2)]);
+            fputcsv($handle, ['Top Product', $data['summary']['top_product']]);
+            fputcsv($handle, []);
+            
+            // Product sales
+            fputcsv($handle, ['PRODUCT SALES']);
+            fputcsv($handle, ['Product', 'Quantity Sold', 'Revenue']);
+            foreach ($data['product_sales'] as $item) {
+                fputcsv($handle, [
+                    $item->product->name ?? 'Unknown',
+                    $item->total_quantity,
+                    '$' . number_format($item->total_revenue, 2)
+                ]);
+            }
+            
+            fclose($handle);
+        };
+
+        return response()->stream($callback, 200, $headers);
     }
 
     /**
@@ -279,7 +619,7 @@ class VendorController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            \Log::error('Vendor profile error: ' . $e->getMessage());
+            Log::error('Vendor profile error: ' . $e->getMessage());
             
             return response()->json([
                 'success' => false,
@@ -317,7 +657,6 @@ class VendorController extends Controller
 
             // Handle avatar upload
             if ($request->hasFile('avatar')) {
-                // Delete old avatar if exists
                 if ($user->avatar && Storage::disk('public')->exists($user->avatar)) {
                     Storage::disk('public')->delete($user->avatar);
                 }
@@ -364,81 +703,11 @@ class VendorController extends Controller
                 'errors' => $e->errors()
             ], 422);
         } catch (\Exception $e) {
-            \Log::error('Vendor profile update error: ' . $e->getMessage());
+            Log::error('Vendor profile update error: ' . $e->getMessage());
             
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to update profile',
-                'error' => config('app.debug') ? $e->getMessage() : null
-            ], 500);
-        }
-    }
-
-    /**
-     * Get vendor sales report
-     */
-    public function salesReport(Request $request)
-    {
-        try {
-            $vendorId = auth()->id();
-            $period = $request->period ?? 'month'; // day, week, month, year
-            
-            $startDate = now();
-            switch ($period) {
-                case 'day':
-                    $startDate = now()->subDay();
-                    break;
-                case 'week':
-                    $startDate = now()->subWeek();
-                    break;
-                case 'month':
-                    $startDate = now()->subMonth();
-                    break;
-                case 'year':
-                    $startDate = now()->subYear();
-                    break;
-                default:
-                    $startDate = now()->subMonth();
-            }
-
-            $sales = OrderItem::whereHas('product', function($q) use ($vendorId) {
-                $q->where('vendor_id', $vendorId);
-            })
-            ->whereHas('order', function($q) {
-                $q->where('status', '!=', 'cancelled');
-            })
-            ->where('created_at', '>=', $startDate)
-            ->select(
-                DB::raw('DATE(created_at) as date'),
-                DB::raw('COUNT(*) as order_count'),
-                DB::raw('SUM(price * quantity) as revenue')
-            )
-            ->groupBy('date')
-            ->orderBy('date', 'asc')
-            ->get();
-
-            // Calculate totals
-            $totalRevenue = $sales->sum('revenue');
-            $totalOrders = $sales->sum('order_count');
-
-            return response()->json([
-                'success' => true,
-                'data' => [
-                    'period' => $period,
-                    'start_date' => $startDate->format('Y-m-d'),
-                    'end_date' => now()->format('Y-m-d'),
-                    'total_revenue' => $totalRevenue,
-                    'total_orders' => $totalOrders,
-                    'sales_data' => $sales
-                ]
-            ]);
-
-        } catch (\Exception $e) {
-            \Log::error('Sales report error: ' . $e->getMessage());
-            
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to generate sales report',
                 'error' => config('app.debug') ? $e->getMessage() : null
             ], 500);
         }
@@ -466,7 +735,7 @@ class VendorController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            \Log::error('Low stock products error: ' . $e->getMessage());
+            Log::error('Low stock products error: ' . $e->getMessage());
             
             return response()->json([
                 'success' => false,
@@ -532,7 +801,7 @@ class VendorController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            \Log::error('Vendor stats error: ' . $e->getMessage());
+            Log::error('Vendor stats error: ' . $e->getMessage());
             
             return response()->json([
                 'success' => false,

@@ -93,6 +93,8 @@ export const cartApi = {
         api.delete('/cart/clear'),
     getCartTotal: () => 
         api.get('/cart/total'),
+    getCartCount: () =>
+        api.get('/cart/count'),
 }
 
 // ============================================================
@@ -106,6 +108,10 @@ export const wishlistApi = {
         api.delete(`/wishlist/remove/${productId}`),
     checkInWishlist: (productId) => 
         api.get(`/wishlist/check/${productId}`),
+    getWishlistCount: () =>
+        api.get('/wishlist/count'),
+    clearWishlist: () =>
+        api.delete('/wishlist/clear'),
 }
 
 // ============================================================
@@ -117,6 +123,8 @@ export const orderApi = {
     createOrder: (orderData) => api.post('/orders', orderData),
     cancelOrder: (id) => api.put(`/orders/${id}/cancel`),
     trackOrder: (id) => api.get(`/orders/track/${id}`),
+    getOrderInvoice: (id) => api.get(`/orders/invoice/${id}`),
+    returnOrder: (id, data) => api.post(`/orders/${id}/return`, data),
 }
 
 // ============================================================
@@ -127,6 +135,38 @@ export const reviewApi = {
     createReview: (data) => api.post('/reviews', data),
     updateReview: (id, data) => api.put(`/reviews/${id}`, data),
     deleteReview: (id) => api.delete(`/reviews/${id}`),
+    markHelpful: (id) => api.post(`/reviews/${id}/helpful`),
+    reportReview: (id) => api.post(`/reviews/${id}/report`),
+}
+
+// ============================================================
+// ===== PAYMENT API METHODS =====
+// ============================================================
+export const paymentApi = {
+    createPayment: (data) => api.post('/payments/create', data),
+    verifyPayment: (data) => api.post('/payments/verify', data),
+    getPaymentMethods: () => api.get('/payments/methods'),
+    getPaymentHistory: () => api.get('/payments/history'),
+    refundPayment: (id, data) => api.post(`/payments/refund/${id}`, data),
+}
+
+// ============================================================
+// ===== SHIPPING API METHODS =====
+// ============================================================
+export const shippingApi = {
+    getShippingMethods: () => api.get('/shipping/methods'),
+    calculateShipping: (data) => api.post('/shipping/calculate', data),
+    trackShipment: (trackingNumber) => api.get(`/shipping/track/${trackingNumber}`),
+}
+
+// ============================================================
+// ===== COUPON API METHODS =====
+// ============================================================
+export const couponApi = {
+    validateCoupon: (code) => api.get('/coupons/validate', { params: { code } }),
+    getCoupons: () => api.get('/coupons'),
+    getCoupon: (code) => api.get(`/coupons/${code}`),
+    applyCoupon: (code) => api.post('/coupons/apply', { code }),
 }
 
 // ============================================================
@@ -140,12 +180,13 @@ export const vendorApi = {
     
     // Protected Vendor Routes (Requires Vendor Role)
     getDashboard: () => api.get('/vendor/dashboard'),
-    getSalesReport: () => api.get('/vendor/sales-report'),
+    getStats: () => api.get('/vendor/stats'),
+    getSalesReport: (params = {}) => api.get('/vendor/sales-report', { params }),
+    getOrderAnalytics: (params = {}) => api.get('/vendor/order-analytics', { params }),
     
-    // Product Management (with image upload support)
-    getVendorProductsList: () => api.get('/vendor/products'),
+    // Product Management
+    getVendorProductsList: (params = {}) => api.get('/vendor/products', { params }),
     createProduct: (productData) => {
-        // If FormData is passed, let axios handle the headers
         if (productData instanceof FormData) {
             return api.post('/vendor/products', productData, {
                 headers: { 'Content-Type': 'multipart/form-data' }
@@ -154,9 +195,7 @@ export const vendorApi = {
         return api.post('/vendor/products', productData)
     },
     updateProduct: (id, productData) => {
-        // If FormData is passed, let axios handle the headers
         if (productData instanceof FormData) {
-            // For PUT with FormData, append _method
             productData.append('_method', 'PUT')
             return api.post(`/vendor/products/${id}`, productData, {
                 headers: { 'Content-Type': 'multipart/form-data' }
@@ -165,17 +204,48 @@ export const vendorApi = {
         return api.put(`/vendor/products/${id}`, productData)
     },
     deleteProduct: (id) => api.delete(`/vendor/products/${id}`),
+    duplicateProduct: (id) => api.post(`/vendor/products/${id}/duplicate`),
+    toggleProductStatus: (id) => api.put(`/vendor/products/${id}/toggle-status`),
+    getLowStockProducts: (params = {}) => api.get('/vendor/low-stock', { params }),
+    updateProductStock: (id, quantity) => 
+        api.put(`/vendor/products/${id}/stock`, { stock_quantity: quantity }),
+    deleteProductImage: (imageId) => api.delete(`/vendor/products/image/${imageId}`),
     
     // Order Management
-    getVendorOrders: () => api.get('/vendor/orders'),
+    getVendorOrders: (params = {}) => api.get('/vendor/orders', { params }),
+    getVendorOrderDetails: (id) => api.get(`/vendor/orders/${id}`),
     updateOrderStatus: (id, status) => 
         api.put(`/vendor/orders/${id}/status`, { status }),
+    acceptOrder: (id) => api.put(`/vendor/orders/${id}/accept`),
+    rejectOrder: (id) => api.put(`/vendor/orders/${id}/reject`),
     
     // Coupon Management
-    getCoupons: () => api.get('/vendor/coupons'),
-    createCoupon: (data) => api.post('/vendor/coupons', data),
-    updateCoupon: (id, data) => api.put(`/vendor/coupons/${id}`, data),
-    deleteCoupon: (id) => api.delete(`/vendor/coupons/${id}`),
+    getVendorCoupons: () => api.get('/vendor/coupons'),
+    createVendorCoupon: (data) => api.post('/vendor/coupons', data),
+    updateVendorCoupon: (id, data) => api.put(`/vendor/coupons/${id}`, data),
+    deleteVendorCoupon: (id) => api.delete(`/vendor/coupons/${id}`),
+    toggleVendorCoupon: (id) => api.put(`/vendor/coupons/${id}/toggle`),
+    
+    // Payouts
+    getPayouts: () => api.get('/vendor/payouts'),
+    requestPayout: (data) => api.post('/vendor/payouts/request', data),
+    getPayoutHistory: () => api.get('/vendor/payouts/history'),
+    
+    // Analytics
+    getProductAnalytics: () => api.get('/vendor/analytics/products'),
+    getCustomerAnalytics: () => api.get('/vendor/analytics/customers'),
+    getRevenueAnalytics: () => api.get('/vendor/analytics/revenue'),
+    
+    // Profile
+    getVendorProfile: () => api.get('/vendor/profile'),
+    updateVendorProfile: (data) => api.put('/vendor/profile', data),
+    uploadVendorLogo: (logo) => {
+        const formData = new FormData()
+        formData.append('logo', logo)
+        return api.post('/vendor/profile/logo', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+        })
+    },
 }
 
 // ============================================================
@@ -185,32 +255,88 @@ export const adminApi = {
     // Dashboard & Analytics
     getDashboard: () => api.get('/admin/dashboard'),
     getAnalytics: () => api.get('/admin/analytics'),
+    getOverview: () => api.get('/admin/overview'),
     
     // User Management
-    getUsers: () => api.get('/admin/users'),
+    getUsers: (params = {}) => api.get('/admin/users', { params }),
+    getUserDetails: (id) => api.get(`/admin/users/${id}`),
+    createUser: (data) => api.post('/admin/users', data),
+    updateUser: (id, data) => api.put(`/admin/users/${id}`, data),
     updateUserRole: (id, role) => api.put(`/admin/users/${id}/role`, { role }),
     updateUserStatus: (id, status) => api.put(`/admin/users/${id}/status`, { status }),
     deleteUser: (id) => api.delete(`/admin/users/${id}`),
     
     // Vendor Management
-    getVendors: () => api.get('/admin/vendors'),
+    getVendors: (params = {}) => api.get('/admin/vendors', { params }),
+    getVendorDetails: (id) => api.get(`/admin/vendors/${id}`),
     getPendingVendors: () => api.get('/admin/vendors/pending'),
     approveVendor: (id) => api.put(`/admin/vendors/${id}/approve`),
     suspendVendor: (id) => api.put(`/admin/vendors/${id}/suspend`),
+    updateVendorCommission: (id, rate) => 
+        api.put(`/admin/vendors/${id}/commission`, { commission_rate: rate }),
+    deleteVendor: (id) => api.delete(`/admin/vendors/${id}`),
+    getVendorAnalytics: (id) => api.get(`/admin/vendors/${id}/analytics`),
     
-    // Order Management
-    getOrders: () => api.get('/admin/orders'),
+    // Product Management (Admin)
+    getProducts: (params = {}) => api.get('/admin/products', { params }),
+    getProductDetails: (id) => api.get(`/admin/products/${id}`),
+    updateProductStatus: (id, status) => 
+        api.put(`/admin/products/${id}/status`, { status }),
+    featureProduct: (id, featured) => 
+        api.put(`/admin/products/${id}/feature`, { is_featured: featured }),
+    deleteProduct: (id) => api.delete(`/admin/products/${id}`),
+    getPendingProducts: () => api.get('/admin/products/pending'),
+    
+    // Order Management (Admin)
+    getOrders: (params = {}) => api.get('/admin/orders', { params }),
+    getOrderDetails: (id) => api.get(`/admin/orders/${id}`),
     updateOrderStatus: (id, status) => 
         api.put(`/admin/orders/${id}/status`, { status }),
+    deleteOrder: (id) => api.delete(`/admin/orders/${id}`),
+    getOrderAnalytics: () => api.get('/admin/orders/analytics'),
     
-    // Category Management
+    // Category Management (Admin)
     createCategory: (data) => api.post('/admin/categories', data),
     updateCategory: (id, data) => api.put(`/admin/categories/${id}`, data),
     deleteCategory: (id) => api.delete(`/admin/categories/${id}`),
+    reorderCategory: (id, order) => 
+        api.put(`/admin/categories/${id}/reorder`, { order }),
+    uploadCategoryImage: (id, image) => {
+        const formData = new FormData()
+        formData.append('image', image)
+        return api.post(`/admin/categories/${id}/image`, formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+        })
+    },
     
     // Payment Management
-    getPayments: () => api.get('/admin/payments'),
+    getPayments: (params = {}) => api.get('/admin/payments', { params }),
     getPaymentDetails: (id) => api.get(`/admin/payments/${id}`),
+    updatePaymentStatus: (id, status) => 
+        api.put(`/admin/payments/${id}/status`, { status }),
+    refundPayment: (id, data) => api.post(`/admin/payments/${id}/refund`, data),
+    getPaymentAnalytics: () => api.get('/admin/payments/analytics'),
+    
+    // Coupon Management (Admin)
+    getCoupons: (params = {}) => api.get('/admin/coupons', { params }),
+    createCoupon: (data) => api.post('/admin/coupons', data),
+    updateCoupon: (id, data) => api.put(`/admin/coupons/${id}`, data),
+    deleteCoupon: (id) => api.delete(`/admin/coupons/${id}`),
+    toggleCoupon: (id) => api.put(`/admin/coupons/${id}/toggle`),
+    
+    // Settings
+    getSettings: () => api.get('/admin/settings'),
+    updateSettings: (data) => api.put('/admin/settings', data),
+    updatePaymentSettings: (data) => api.put('/admin/settings/payment', data),
+    updateShippingSettings: (data) => api.put('/admin/settings/shipping', data),
+    updateEmailSettings: (data) => api.put('/admin/settings/email', data),
+    
+    // Reports
+    getSalesReport: (params = {}) => api.get('/admin/reports/sales', { params }),
+    getRevenueReport: (params = {}) => api.get('/admin/reports/revenue', { params }),
+    getProductReport: (params = {}) => api.get('/admin/reports/products', { params }),
+    getUserReport: (params = {}) => api.get('/admin/reports/users', { params }),
+    exportReport: (params = {}) => api.get('/admin/reports/export', { params }),
 }
 
 export default api

@@ -7,37 +7,39 @@
       </button>
 
       <!-- Loading State -->
-      <div v-if="isLoading" class="loading-state">
+      <div v-if="loading" class="loading-state">
         <div class="spinner"></div>
         <p>Loading product details...</p>
       </div>
 
       <!-- Product Detail -->
       <div v-else-if="product" class="product-detail-grid">
-        <!-- Product Image -->
+        <!-- Product Image Gallery -->
         <div class="product-image-section">
           <div class="main-image">
             <img 
-              v-if="product.image" 
-              :src="product.image" 
+              :src="mainImage" 
               :alt="product.name"
               class="main-product-img"
               @error="handleImageError"
             />
+            <span v-if="product.discount_percentage" class="discount-badge">
+              -{{ product.discount_percentage }}%
+            </span>
           </div>
-          <div class="thumbnail-grid">
+          <div v-if="product.images && product.images.length > 1" class="thumbnail-grid">
             <div 
-              v-for="i in 4" 
-              :key="i" 
+              v-for="(image, index) in product.images" 
+              :key="index"
               class="thumbnail"
-              @click="changeMainImage(i)"
+              :class="{ active: currentImageIndex === index }"
+              @click="selectImage(index)"
             >
               <img 
-                v-if="product.image" 
-                :src="product.image" 
+                :src="'http://localhost:8000/storage/' + image.image_path" 
                 :alt="product.name"
                 class="thumbnail-img"
-                @error="handleImageError"
+                @error="handleThumbnailError"
               />
             </div>
           </div>
@@ -45,22 +47,31 @@
 
         <!-- Product Info -->
         <div class="product-info-section">
-          <div class="product-vendor">{{ product.vendor }}</div>
+          <div class="product-vendor">
+            <i class="bi bi-shop"></i>
+            {{ getVendorName() }}
+          </div>
           <h1 class="product-name">{{ product.name }}</h1>
           
           <!-- Rating -->
           <div class="product-rating">
             <span class="stars">
-              <i v-for="n in 5" :key="n" :class="n <= Math.floor(product.rating) ? 'bi bi-star-fill' : 'bi bi-star'"></i>
+              <i v-for="n in 5" :key="n" :class="n <= Math.floor(product.rating || 0) ? 'bi bi-star-fill' : 'bi bi-star'"></i>
             </span>
-            <span class="rating-count">{{ product.rating }} ({{ product.reviews }} reviews)</span>
+            <span class="rating-count">({{ product.reviews_count || 0 }} reviews)</span>
           </div>
 
           <!-- Price -->
           <div class="product-price">
             <span class="current-price">${{ product.price }}</span>
-            <span v-if="product.originalPrice" class="original-price">${{ product.originalPrice }}</span>
-            <span v-if="product.discount" class="discount-badge">-{{ product.discount }}%</span>
+            <span v-if="product.compare_price" class="original-price">${{ product.compare_price }}</span>
+            <span v-if="product.discount_percentage" class="discount-badge">-{{ product.discount_percentage }}%</span>
+          </div>
+
+          <!-- Stock Status -->
+          <div class="stock-status" :class="{ 'in-stock': product.stock_quantity > 0, 'out-of-stock': product.stock_quantity <= 0 }">
+            <i :class="product.stock_quantity > 0 ? 'bi bi-check-circle-fill' : 'bi bi-x-circle-fill'"></i>
+            {{ product.stock_quantity > 0 ? `In Stock (${product.stock_quantity} available)` : 'Out of Stock' }}
           </div>
 
           <!-- Description -->
@@ -70,10 +81,10 @@
           </div>
 
           <!-- Product Features -->
-          <div class="product-features">
+          <div v-if="productFeatures.length > 0" class="product-features">
             <h4>Features</h4>
             <ul>
-              <li v-for="feature in productFeatures" :key="feature">
+              <li v-for="(feature, index) in productFeatures" :key="index">
                 <i class="bi bi-check-circle-fill"></i> {{ feature }}
               </li>
             </ul>
@@ -86,14 +97,23 @@
                 <i class="bi bi-dash"></i>
               </button>
               <span>{{ quantity }}</span>
-              <button @click="increaseQuantity">
+              <button @click="increaseQuantity" :disabled="quantity >= product.stock_quantity">
                 <i class="bi bi-plus"></i>
               </button>
             </div>
-            <button class="btn-primary-modern add-to-cart-btn" @click="addToCart">
-              <i class="bi bi-cart-plus me-2"></i>Add to Cart
+            <button 
+              class="btn-primary-modern add-to-cart-btn" 
+              @click="addToCart"
+              :disabled="product.stock_quantity <= 0 || isAddingToCart"
+            >
+              <i class="bi bi-cart-plus me-2"></i>
+              {{ isAddingToCart ? 'Adding...' : (product.stock_quantity > 0 ? 'Add to Cart' : 'Out of Stock') }}
             </button>
-            <button class="wishlist-btn-large" @click="toggleWishlist" :class="{ 'wishlisted': isWishlisted }">
+            <button 
+              class="wishlist-btn-large" 
+              @click="toggleWishlist" 
+              :class="{ 'wishlisted': isWishlisted }"
+            >
               <i :class="isWishlisted ? 'bi bi-heart-fill' : 'bi bi-heart'"></i>
               {{ isWishlisted ? 'Remove from Wishlist' : 'Add to Wishlist' }}
             </button>
@@ -103,12 +123,33 @@
           <div class="product-meta">
             <div class="meta-item">
               <i class="bi bi-tag"></i>
-              <span>Category: <strong>{{ product.category || 'Uncategorized' }}</strong></span>
+              <span>SKU: <strong>{{ product.sku || 'N/A' }}</strong></span>
             </div>
             <div class="meta-item">
-              <i class="bi bi-box"></i>
-              <span>Stock: <strong>{{ product.stock || 'In Stock' }}</strong></span>
+              <i class="bi bi-folder"></i>
+              <span>Category: <strong>{{ product.category?.name || 'Uncategorized' }}</strong></span>
             </div>
+            <div class="meta-item">
+              <i class="bi bi-clock"></i>
+              <span>Added: <strong>{{ formatDate(product.created_at) }}</strong></span>
+            </div>
+          </div>
+
+          <!-- Share Section -->
+          <div class="share-section">
+            <span>Share:</span>
+            <button class="share-btn" @click="shareProduct('facebook')">
+              <i class="bi bi-facebook"></i>
+            </button>
+            <button class="share-btn" @click="shareProduct('twitter')">
+              <i class="bi bi-twitter-x"></i>
+            </button>
+            <button class="share-btn" @click="shareProduct('whatsapp')">
+              <i class="bi bi-whatsapp"></i>
+            </button>
+            <button class="share-btn" @click="copyProductLink">
+              <i class="bi bi-link-45deg"></i>
+            </button>
           </div>
         </div>
       </div>
@@ -119,6 +160,7 @@
           <i class="bi bi-exclamation-triangle" style="font-size: 4rem; color: var(--text-muted);"></i>
           <h3>Product Not Found</h3>
           <p>The product you're looking for doesn't exist or has been removed.</p>
+          <p class="debug-info" v-if="debugInfo">{{ debugInfo }}</p>
           <button class="btn-primary-modern" @click="goBack">
             <i class="bi bi-arrow-left me-2"></i>Go Back
           </button>
@@ -126,8 +168,8 @@
       </div>
 
       <!-- Related Products -->
-      <section v-if="relatedProducts.length > 0 && product" class="related-products">
-        <h2 class="section-title">Related Products</h2>
+      <section v-if="relatedProducts.length > 0" class="related-products">
+        <h2 class="section-title">You Might Also Like</h2>
         <div class="products-grid">
           <ProductCard 
             v-for="product in relatedProducts" 
@@ -135,191 +177,234 @@
             :product="product"
             @add-to-cart="handleAddToCart"
             @wishlist-toggle="handleWishlistToggle"
-            @view-product="handleViewProduct"
+            @view-product="goToProduct"
           />
         </div>
       </section>
+
+      <!-- Toast Notification -->
+      <div v-if="toast.show" class="toast-notification" :class="toast.type">
+        <i :class="toast.icon"></i>
+        {{ toast.message }}
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import ProductCard from '../components/ProductCard.vue'
+import { cartApi, wishlistApi } from '@/services/api'
 
 const router = useRouter()
 const route = useRoute()
 
 // ===== STATE =====
-const isLoading = ref(true)
+const product = ref(null)
+const relatedProducts = ref([])
+const loading = ref(true)
 const quantity = ref(1)
+const currentImageIndex = ref(0)
 const isWishlisted = ref(false)
-const currentImage = ref(0)
+const isAddingToCart = ref(false)
+const debugInfo = ref('')
 
-// ===== ALL PRODUCTS DATA WITH REAL IMAGES =====
-const allProducts = ref([
-  { 
-    id: 1, 
-    name: 'Wireless Noise-Cancelling Headphones', 
-    vendor: 'TechShop', 
-    category: 'Electronics',
-    price: 49.99,
-    originalPrice: 79.99,
-    rating: 4.8, 
-    reviews: 234,
-    image: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?q=80&w=870&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D',
-    isNew: true,
-    discount: 38,
-    description: 'Premium wireless headphones with active noise cancellation and 30hr battery life. Perfect for travel, work, and everyday use.',
-    stock: 'In Stock',
-    features: ['Active Noise Cancellation', '30 Hour Battery', 'Bluetooth 5.0', 'Comfortable Fit', 'Built-in Microphone']
-  },
-  { 
-    id: 2, 
-    name: 'Premium Leather Jacket', 
-    vendor: 'FashionHub', 
-    category: 'Fashion',
-    price: 89.99,
-    originalPrice: null,
-    rating: 4.5, 
-    reviews: 189,
-    image: 'https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=870&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D',
-    isNew: false,
-    discount: null,
-    description: 'Genuine leather jacket with premium stitching and classic design. Made from high-quality materials for durability and style.',
-    stock: 'In Stock',
-    features: ['Genuine Leather', 'Classic Design', 'Multiple Colors', 'Premium Stitching', 'Durable Material']
-  },
-  { 
-    id: 3, 
-    name: 'Smart Coffee Maker Pro', 
-    vendor: 'HomeGoods', 
-    category: 'Home & Living',
-    price: 129.99,
-    originalPrice: 159.99,
-    rating: 4.7, 
-    reviews: 312,
-    image: 'https://images.unsplash.com/photo-1517668808822-9f02a4bcc53a?q=80&w=870&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D',
-    isNew: true,
-    discount: 19,
-    description: 'Programmable coffee maker with smart features and temperature control. Brew the perfect cup every time.',
-    stock: 'In Stock',
-    features: ['Programmable', 'Temperature Control', 'Smart Features', 'Large Capacity', 'Auto Shut-off']
-  },
-  { 
-    id: 4, 
-    name: 'Fitness Smart Watch', 
-    vendor: 'GadgetWorld', 
-    category: 'Electronics',
-    price: 199.99,
-    originalPrice: 249.99,
-    rating: 4.9, 
-    reviews: 456,
-    image: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?q=80&w=870&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D',
-    isNew: false,
-    discount: 20,
-    description: 'Advanced fitness tracker with heart rate monitor and GPS tracking. Monitor your health and fitness goals.',
-    stock: 'In Stock',
-    features: ['Heart Rate Monitor', 'GPS Tracking', 'Water Resistant', 'Long Battery Life', 'Sleep Tracking']
-  },
-  { 
-    id: 5, 
-    name: 'Organic Cotton T-Shirt', 
-    vendor: 'FashionHub', 
-    category: 'Fashion',
-    price: 24.99,
-    originalPrice: null,
-    rating: 4.2, 
-    reviews: 78,
-    image: 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?q=80&w=870&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D',
-    isNew: true,
-    discount: null,
-    description: 'Comfortable organic cotton t-shirt available in multiple colors. Sustainable fashion for everyday wear.',
-    stock: 'In Stock',
-    features: ['Organic Cotton', 'Multiple Colors', 'Comfortable Fit', 'Eco-Friendly', 'Durable Material']
-  },
-  { 
-    id: 6, 
-    name: 'E-Reader Paperwhite', 
-    vendor: 'TechShop', 
-    category: 'Electronics',
-    price: 139.99,
-    originalPrice: 159.99,
-    rating: 4.6, 
-    reviews: 267,
-    image: 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?q=80&w=870&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D',
-    isNew: false,
-    discount: 12,
-    description: 'Waterproof e-reader with built-in light and weeks of battery life. Carry your entire library with you.',
-    stock: 'In Stock',
-    features: ['Waterproof', 'Built-in Light', 'Weeks of Battery', 'Large Storage', 'Glare-Free Display']
-  },
-  { 
-    id: 7, 
-    name: 'Professional Knife Set', 
-    vendor: 'HomeGoods', 
-    category: 'Home & Living',
-    price: 79.99,
-    originalPrice: null,
-    rating: 4.4, 
-    reviews: 145,
-    image: 'https://images.unsplash.com/photo-1593618998160-e34014e67546?q=80&w=870&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D',
-    isNew: false,
-    discount: null,
-    description: 'Professional 5-piece kitchen knife set with wooden storage block. High-quality stainless steel blades.',
-    stock: 'In Stock',
-    features: ['Stainless Steel', '5-Piece Set', 'Wooden Storage', 'Sharp Blades', 'Ergonomic Handles']
-  },
-  { 
-    id: 8, 
-    name: 'Wireless Charging Pad', 
-    vendor: 'GadgetWorld', 
-    category: 'Electronics',
-    price: 29.99,
-    originalPrice: 49.99,
-    rating: 4.3, 
-    reviews: 198,
-    image: 'https://images.unsplash.com/photo-1586953208448-b3a1fdd0a1c5?q=80&w=870&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D',
-    isNew: true,
-    discount: 40,
-    description: 'Fast wireless charging pad compatible with all Qi-enabled devices. Sleek design for your desk or nightstand.',
-    stock: 'In Stock',
-    features: ['Fast Charging', 'Qi-Compatible', 'Sleek Design', 'LED Indicator', 'Overcharge Protection']
-  },
-])
+// ===== TOAST =====
+const toast = ref({
+  show: false,
+  message: '',
+  type: 'success',
+  icon: 'bi bi-check-circle-fill'
+})
 
 // ===== COMPUTED =====
-const productId = computed(() => Number(route.params.id))
-const product = computed(() => {
-  return allProducts.value.find(p => p.id === productId.value)
+const mainImage = computed(() => {
+  if (!product.value) return ''
+  
+  if (product.value.images && product.value.images.length > 0) {
+    const image = product.value.images[currentImageIndex.value]
+    if (image) {
+      return 'http://localhost:8000/storage/' + image.image_path
+    }
+  }
+  
+  return 'https://via.placeholder.com/600x600?text=No+Image'
 })
 
 const productFeatures = computed(() => {
-  return product.value?.features || ['High Quality', 'Durable', 'Reliable']
-})
-
-const relatedProducts = computed(() => {
   if (!product.value) return []
-  return allProducts.value.filter(p => 
-    p.id !== product.value.id && p.category === product.value.category
-  ).slice(0, 4)
+  
+  // Try to get features from attributes or specifications
+  if (product.value.attributes) {
+    if (typeof product.value.attributes === 'object') {
+      return Object.values(product.value.attributes)
+    }
+    if (typeof product.value.attributes === 'string') {
+      try {
+        const parsed = JSON.parse(product.value.attributes)
+        if (Array.isArray(parsed)) return parsed
+        if (typeof parsed === 'object') return Object.values(parsed)
+      } catch (e) {}
+    }
+  }
+  
+  // Default features based on product name
+  const defaultFeatures = [
+    'High Quality Material',
+    'Durable Construction',
+    'Reliable Performance',
+    'Easy to Use',
+    'Great Value'
+  ]
+  return defaultFeatures
 })
-
-// ===== CHECK WISHLIST STATUS =====
-const checkWishlistStatus = () => {
-  if (!product.value) return
-  const wishlist = JSON.parse(localStorage.getItem('shopsphere_wishlist') || '[]')
-  isWishlisted.value = wishlist.some(item => item.id === product.value.id)
-}
 
 // ===== METHODS =====
+
+// Fetch product from API
+const fetchProduct = async () => {
+  loading.value = true
+  const productId = route.params.id
+  
+  // Debug info
+  console.log('🔍 Fetching product ID:', productId)
+  console.log('🔍 URL:', `http://localhost:8000/api/products/${productId}`)
+  
+  // Show debug info on page
+  debugInfo.value = `Fetching product ID: ${productId}`
+  
+  try {
+    const response = await fetch(`http://localhost:8000/api/products/${productId}`, {
+      headers: {
+        'Accept': 'application/json'
+      }
+    })
+    
+    console.log('📡 Response status:', response.status)
+    
+    const data = await response.json()
+    
+    console.log('📦 API Response:', data)
+    console.log('📦 Data success:', data.success)
+    console.log('📦 Product data:', data.data)
+    
+    if (data.success && data.data) {
+      product.value = data.data
+      quantity.value = 1
+      currentImageIndex.value = 0
+      debugInfo.value = ''
+      await checkWishlistStatus()
+      await fetchRelatedProducts()
+    } else {
+      console.error('❌ API returned error:', data.message || 'Product not found')
+      debugInfo.value = `Error: ${data.message || 'Product not found'}`
+      product.value = null
+    }
+  } catch (error) {
+    console.error('❌ Error fetching product:', error)
+    debugInfo.value = `Error: ${error.message}`
+    product.value = null
+  } finally {
+    loading.value = false
+  }
+}
+
+// Fetch related products
+const fetchRelatedProducts = async () => {
+  if (!product.value) return
+  
+  try {
+    const response = await fetch(
+      `http://localhost:8000/api/products?category_id=${product.value.category_id}&limit=4`
+    )
+    const data = await response.json()
+    
+    if (data.success) {
+      relatedProducts.value = data.data.data
+        .filter(p => p.id !== product.value.id)
+        .slice(0, 4)
+    }
+  } catch (error) {
+    console.error('Error fetching related products:', error)
+  }
+}
+
+// Check wishlist status
+const checkWishlistStatus = async () => {
+  if (!product.value) return
+  
+  const token = localStorage.getItem('token')
+  if (!token) {
+    // Check localStorage
+    const wishlist = JSON.parse(localStorage.getItem('shopsphere_wishlist') || '[]')
+    isWishlisted.value = wishlist.some(item => item.id === product.value.id)
+    return
+  }
+  
+  try {
+    const response = await wishlistApi.checkInWishlist(product.value.id)
+    if (response.data.success) {
+      isWishlisted.value = response.data.data.in_wishlist
+    }
+  } catch (error) {
+    console.error('Error checking wishlist:', error)
+    // Fallback to localStorage
+    const wishlist = JSON.parse(localStorage.getItem('shopsphere_wishlist') || '[]')
+    isWishlisted.value = wishlist.some(item => item.id === product.value.id)
+  }
+}
+
+// Get vendor name
+const getVendorName = () => {
+  if (!product.value) return 'ShopSphere'
+  
+  if (product.value.vendor) {
+    if (typeof product.value.vendor === 'object') {
+      return product.value.vendor.shop_name || product.value.vendor.name || 'ShopSphere'
+    }
+    return product.value.vendor
+  }
+  return 'ShopSphere'
+}
+
+// Format date
+const formatDate = (date) => {
+  if (!date) return 'N/A'
+  return new Date(date).toLocaleDateString('en-US', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric'
+  })
+}
+
+// Image gallery
+const selectImage = (index) => {
+  currentImageIndex.value = index
+}
+
+const handleImageError = (event) => {
+  event.target.src = 'https://via.placeholder.com/600x600?text=No+Image'
+}
+
+const handleThumbnailError = (event) => {
+  event.target.src = 'https://via.placeholder.com/100x100?text=No+Image'
+}
+
+// Navigation
 const goBack = () => {
   router.back()
 }
 
+const goToProduct = (product) => {
+  router.push(`/product/${product.id}`)
+}
+
+// Quantity
 const increaseQuantity = () => {
-  quantity.value++
+  if (quantity.value < (product.value?.stock_quantity || 0)) {
+    quantity.value++
+  }
 }
 
 const decreaseQuantity = () => {
@@ -328,87 +413,159 @@ const decreaseQuantity = () => {
   }
 }
 
-const changeMainImage = (index) => {
-  currentImage.value = index
-}
-
-const handleImageError = (e) => {
-  e.target.style.display = 'none'
-}
-
-// ===== ADD TO CART =====
-const addToCart = () => {
-  let cart = JSON.parse(localStorage.getItem('shopsphere_cart') || '[]')
-  const existingItem = cart.find(item => item.id === product.value.id)
+// Add to cart
+const addToCart = async () => {
+  if (isAddingToCart.value || !product.value || product.value.stock_quantity <= 0) return
   
-  if (existingItem) {
-    existingItem.quantity += quantity.value
-  } else {
-    cart.push({
-      ...product.value,
-      quantity: quantity.value,
-      image: product.value.image || null
-    })
-  }
+  isAddingToCart.value = true
   
-  localStorage.setItem('shopsphere_cart', JSON.stringify(cart))
-  window.dispatchEvent(new Event('storage'))
-  window.dispatchEvent(new CustomEvent('cart-updated'))
-  
-  const message = existingItem 
-    ? `Added ${quantity.value} more "${product.value.name}" to cart!` 
-    : `Added "${product.value.name}" (${quantity.value}) to cart!`
-  alert(`🛒 ${message}`)
-  
-  quantity.value = 1
-}
-
-// ===== TOGGLE WISHLIST =====
-const toggleWishlist = () => {
-  isWishlisted.value = !isWishlisted.value
-  
-  let wishlist = JSON.parse(localStorage.getItem('shopsphere_wishlist') || '[]')
-  
-  if (isWishlisted.value) {
-    const exists = wishlist.some(item => item.id === product.value.id)
-    if (!exists) {
-      wishlist.push({
-        ...product.value,
-        image: product.value.image || null
-      })
-      localStorage.setItem('shopsphere_wishlist', JSON.stringify(wishlist))
-      alert('❤️ Added to wishlist!')
+  try {
+    const token = localStorage.getItem('token')
+    const productId = product.value.id
+    const quantityToAdd = quantity.value
+    
+    if (token) {
+      const response = await cartApi.addToCart(productId, quantityToAdd)
+      if (response.data.success) {
+        showToast('Product added to cart!', 'success', 'bi bi-check-circle-fill')
+        await updateCartCount()
+      }
+    } else {
+      // Guest cart
+      let cart = JSON.parse(localStorage.getItem('shopsphere_cart') || '[]')
+      const existingItem = cart.find(item => item.id === productId)
+      
+      if (existingItem) {
+        existingItem.quantity += quantityToAdd
+      } else {
+        cart.push({
+          ...product.value,
+          quantity: quantityToAdd,
+          image: mainImage.value
+        })
+      }
+      
+      localStorage.setItem('shopsphere_cart', JSON.stringify(cart))
+      showToast('Product added to cart!', 'success', 'bi bi-check-circle-fill')
+      await updateCartCount()
     }
-  } else {
-    wishlist = wishlist.filter(item => item.id !== product.value.id)
-    localStorage.setItem('shopsphere_wishlist', JSON.stringify(wishlist))
-    alert('💔 Removed from wishlist!')
+  } catch (error) {
+    console.error('Error adding to cart:', error)
+    showToast('Failed to add to cart. Please try again.', 'error', 'bi bi-exclamation-circle-fill')
+  } finally {
+    isAddingToCart.value = false
   }
 }
 
+// Update cart count
+const updateCartCount = async () => {
+  try {
+    const token = localStorage.getItem('token')
+    let count = 0
+    
+    if (token) {
+      const response = await cartApi.getCartTotal()
+      count = response.data.data?.count || 0
+    } else {
+      const cart = JSON.parse(localStorage.getItem('shopsphere_cart') || '[]')
+      count = cart.reduce((sum, item) => sum + item.quantity, 0)
+    }
+    
+    window.dispatchEvent(new CustomEvent('cart-updated', { 
+      detail: { count } 
+    }))
+  } catch (error) {
+    console.error('Error updating cart count:', error)
+  }
+}
+
+// Toggle wishlist
+const toggleWishlist = async () => {
+  if (!product.value) return
+  
+  const token = localStorage.getItem('token')
+  
+  if (!token) {
+    showToast('Please login to add to wishlist', 'error', 'bi bi-exclamation-circle-fill')
+    router.push('/login')
+    return
+  }
+  
+  try {
+    if (isWishlisted.value) {
+      await wishlistApi.removeFromWishlist(product.value.id)
+      isWishlisted.value = false
+      showToast('Removed from wishlist', 'info', 'bi bi-heart')
+    } else {
+      await wishlistApi.addToWishlist(product.value.id)
+      isWishlisted.value = true
+      showToast('Added to wishlist!', 'success', 'bi bi-heart-fill')
+    }
+    
+    // Update wishlist count
+    const response = await wishlistApi.getWishlist()
+    const count = response.data.data?.count || 0
+    window.dispatchEvent(new CustomEvent('wishlist-updated', { 
+      detail: { count } 
+    }))
+  } catch (error) {
+    console.error('Error toggling wishlist:', error)
+    showToast('Failed to update wishlist', 'error', 'bi bi-exclamation-circle-fill')
+  }
+}
+
+// Share functions
+const shareProduct = (platform) => {
+  const url = window.location.href
+  const text = `Check out ${product.value?.name} on ShopSphere!`
+  
+  const shareUrls = {
+    facebook: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`,
+    twitter: `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`,
+    whatsapp: `https://api.whatsapp.com/send?text=${encodeURIComponent(text + ' ' + url)}`
+  }
+  
+  window.open(shareUrls[platform], '_blank', 'width=600,height=400')
+}
+
+const copyProductLink = () => {
+  navigator.clipboard.writeText(window.location.href)
+  showToast('Link copied to clipboard!', 'success', 'bi bi-check-circle-fill')
+}
+
+// Toast notification
+const showToast = (message, type = 'success', icon = 'bi bi-check-circle-fill') => {
+  toast.value = {
+    show: true,
+    message,
+    type,
+    icon
+  }
+  
+  setTimeout(() => {
+    toast.value.show = false
+  }, 3000)
+}
+
+// Event handlers for ProductCard
 const handleAddToCart = (product) => {
-  alert(`🛒 Added "${product.name}" to cart!`)
+  console.log('Add to cart from related:', product)
 }
 
 const handleWishlistToggle = ({ productId, isWishlisted }) => {
-  const message = isWishlisted ? 'added to' : 'removed from'
-  alert(`❤️ Product ${message} wishlist!`)
-}
-
-const handleViewProduct = (product) => {
-  router.push(`/product/${product.id}`)
+  console.log('Wishlist toggled:', productId, isWishlisted)
 }
 
 // ===== LIFECYCLE =====
 onMounted(() => {
-  setTimeout(() => {
-    isLoading.value = false
-    if (!product.value) {
-      // Product not found
-    } else {
-      checkWishlistStatus()
-    }
-  }, 500)
+  console.log('🔄 ProductDetail mounted, ID:', route.params.id)
+  fetchProduct()
+})
+
+// Watch route changes
+watch(() => route.params.id, (newId, oldId) => {
+  console.log('🔄 Route changed from', oldId, 'to', newId)
+  fetchProduct()
 })
 </script>
 
@@ -417,6 +574,12 @@ onMounted(() => {
   padding: 40px 0 80px;
   background: var(--bg-primary);
   min-height: 100vh;
+}
+
+.container-custom {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 20px;
 }
 
 /* ===== BACK BUTTON ===== */
@@ -495,12 +658,25 @@ onMounted(() => {
   font-size: 1.05rem;
 }
 
+.debug-info {
+  font-size: 0.85rem;
+  color: #ef4444;
+  background: #fee2e2;
+  padding: 8px 16px;
+  border-radius: 8px;
+  margin: 0;
+}
+
 /* ===== PRODUCT DETAIL GRID ===== */
 .product-detail-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 60px;
   margin-bottom: 60px;
+  background: var(--bg-card);
+  border-radius: var(--radius);
+  padding: 40px;
+  border: 1px solid var(--border-color);
 }
 
 /* ===== IMAGE SECTION ===== */
@@ -511,7 +687,8 @@ onMounted(() => {
 }
 
 .main-image {
-  height: 500px;
+  position: relative;
+  height: 450px;
   border-radius: var(--radius);
   display: flex;
   align-items: center;
@@ -524,7 +701,19 @@ onMounted(() => {
 .main-product-img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
+}
+
+.discount-badge {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  background: #ef4444;
+  color: white;
+  padding: 6px 16px;
+  border-radius: 50px;
+  font-weight: 700;
+  font-size: 16px;
 }
 
 .thumbnail-grid {
@@ -555,21 +744,28 @@ onMounted(() => {
 
 .thumbnail:hover {
   border-color: #667eea;
-  transform: scale(1.02);
+}
+
+.thumbnail.active {
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
 }
 
 /* ===== INFO SECTION ===== */
 .product-info-section {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
 }
 
 .product-vendor {
   font-size: 0.9rem;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 1px;
+  color: #667eea;
+  font-weight: 500;
+}
+
+.product-vendor i {
+  margin-right: 8px;
 }
 
 .product-name {
@@ -601,6 +797,9 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 16px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-color);
 }
 
 .current-price {
@@ -622,6 +821,22 @@ onMounted(() => {
   border-radius: 50px;
   font-weight: 700;
   font-size: 1rem;
+}
+
+.stock-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.stock-status.in-stock {
+  color: #10b981;
+}
+
+.stock-status.out-of-stock {
+  color: #ef4444;
 }
 
 .product-description h4,
@@ -663,7 +878,7 @@ onMounted(() => {
   gap: 16px;
   flex-wrap: wrap;
   align-items: center;
-  padding: 20px 0;
+  padding: 16px 0;
   border-top: 1px solid var(--border-color);
   border-bottom: 1px solid var(--border-color);
 }
@@ -706,6 +921,11 @@ onMounted(() => {
 .add-to-cart-btn {
   padding: 12px 40px;
   flex: 1;
+}
+
+.add-to-cart-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .wishlist-btn-large {
@@ -754,6 +974,41 @@ onMounted(() => {
 
 .meta-item i {
   font-size: 1.1rem;
+  width: 20px;
+}
+
+/* ===== SHARE SECTION ===== */
+.share-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color);
+}
+
+.share-section span {
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.share-btn {
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border-color);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: var(--transition);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.share-btn:hover {
+  background: #667eea;
+  color: white;
+  border-color: #667eea;
 }
 
 /* ===== RELATED PRODUCTS ===== */
@@ -776,78 +1031,148 @@ onMounted(() => {
   gap: 24px;
 }
 
+/* ===== TOAST ===== */
+.toast-notification {
+  position: fixed;
+  bottom: 30px;
+  right: 30px;
+  padding: 16px 24px;
+  border-radius: var(--radius-sm);
+  color: white;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 9999;
+  animation: slideUp 0.3s ease;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+}
+
+.toast-notification.success {
+  background: #10b981;
+}
+
+.toast-notification.error {
+  background: #ef4444;
+}
+
+.toast-notification.info {
+  background: #3b82f6;
+}
+
+.toast-notification i {
+  font-size: 20px;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(100px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
 /* ===== RESPONSIVE ===== */
 @media (max-width: 1024px) {
+  .product-detail-grid {
+    grid-template-columns: 1fr;
+    gap: 30px;
+    padding: 24px;
+  }
+  
   .products-grid {
     grid-template-columns: repeat(2, 1fr);
   }
 }
 
 @media (max-width: 768px) {
+  .product-detail-page {
+    padding: 20px 0 60px;
+  }
+  
   .product-detail-grid {
-    grid-template-columns: 1fr;
-    gap: 30px;
+    padding: 16px;
   }
-
+  
   .main-image {
-    height: 350px;
+    height: 300px;
   }
-
+  
   .product-name {
     font-size: 2rem;
   }
-
+  
   .current-price {
     font-size: 2rem;
   }
-
+  
   .add-to-cart-section {
     flex-direction: column;
   }
-
+  
   .add-to-cart-btn {
     width: 100%;
   }
-
+  
   .wishlist-btn-large {
     width: 100%;
     justify-content: center;
   }
-
+  
   .product-features ul {
     grid-template-columns: 1fr;
   }
-
+  
   .products-grid {
     grid-template-columns: 1fr 1fr;
     gap: 16px;
   }
+  
+  .toast-notification {
+    bottom: 16px;
+    right: 16px;
+    left: 16px;
+    padding: 12px 16px;
+    font-size: 14px;
+  }
 }
 
 @media (max-width: 480px) {
-  .product-detail-page {
-    padding: 20px 0 60px;
-  }
-
   .main-image {
-    height: 250px;
+    height: 220px;
   }
-
+  
   .product-name {
     font-size: 1.5rem;
   }
-
+  
   .current-price {
     font-size: 1.5rem;
   }
-
+  
+  .original-price {
+    font-size: 1.1rem;
+  }
+  
   .thumbnail {
     height: 60px;
   }
-
+  
   .products-grid {
     grid-template-columns: 1fr 1fr;
     gap: 12px;
+  }
+  
+  .quantity-selector button {
+    width: 34px;
+    height: 34px;
+  }
+  
+  .product-detail-grid {
+    padding: 12px;
   }
 }
 </style>

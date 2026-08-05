@@ -17,6 +17,7 @@ import VendorLayout from '../views/vendor/Layout.vue'
 import VendorDashboard from '../views/vendor/Dashboard.vue'
 import VendorProducts from '../views/vendor/Products.vue'
 import VendorOrders from '../views/vendor/Orders.vue'
+import VendorProfile from '../views/vendor/Profile.vue'  // ✅ Add this
 
 const routes = [
   // Public Routes
@@ -42,6 +43,7 @@ const routes = [
       { path: 'dashboard', name: 'VendorDashboard', component: VendorDashboard },
       { path: 'products', name: 'VendorProducts', component: VendorProducts },
       { path: 'orders', name: 'VendorOrders', component: VendorOrders },
+      { path: 'profile', name: 'VendorProfile', component: VendorProfile },  // ✅ Add this
     ]
   },
 ]

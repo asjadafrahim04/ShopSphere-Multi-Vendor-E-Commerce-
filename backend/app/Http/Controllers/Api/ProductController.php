@@ -144,12 +144,13 @@ class ProductController extends Controller
 
     /**
      * Display the specified product (Public)
+     * ✅ FIXED: Removed is_active filter to show all products
      */
     public function show($id)
     {
         try {
+            // ✅ FIX: Removed ->where('is_active', true) so all products can be viewed
             $product = Product::with(['vendor', 'category', 'images', 'reviews.user'])
-                ->where('is_active', true)
                 ->find($id);
 
             if (!$product) {
@@ -169,9 +170,11 @@ class ProductController extends Controller
 
         } catch (\Exception $e) {
             Log::error('Product show error: ' . $e->getMessage());
+            Log::error($e->getTraceAsString());
+            
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to fetch product'
+                'message' => 'Failed to fetch product: ' . $e->getMessage()
             ], 500);
         }
     }

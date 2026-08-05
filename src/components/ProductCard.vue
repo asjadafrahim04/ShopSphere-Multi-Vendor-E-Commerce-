@@ -3,9 +3,10 @@
     <!-- Product Image -->
     <div class="product-image-wrapper">
       <div class="product-image">
+        <!-- ✅ FIX: Check for images array from API -->
         <img 
-          v-if="product.image" 
-          :src="product.image" 
+          v-if="getProductImage()" 
+          :src="getProductImage()" 
           :alt="product.name"
           loading="lazy"
           @error="handleImageError"
@@ -14,8 +15,8 @@
         <span v-else class="product-emoji">{{ product.emoji || '📦' }}</span>
       </div>
       <!-- Badges -->
-      <span v-if="product.isNew" class="product-badge new">New</span>
-      <span v-if="product.discount" class="product-badge discount">-{{ product.discount }}%</span>
+      <span v-if="product.is_new" class="product-badge new">New</span>
+      <span v-if="product.discount_percentage" class="product-badge discount">-{{ product.discount_percentage }}%</span>
       <!-- Wishlist Button -->
       <button class="wishlist-btn" @click.stop="toggleWishlist" :class="{ 'wishlisted': isWishlisted }">
         <i :class="isWishlisted ? 'bi bi-heart-fill' : 'bi bi-heart'"></i>
@@ -24,27 +25,36 @@
 
     <!-- Product Info -->
     <div class="product-info">
-      <!-- ✅ FIX: Display vendor name correctly -->
       <div class="product-vendor">{{ getVendorName() }}</div>
       <h5 class="product-title">{{ product.name }}</h5>
       
       <!-- Rating -->
       <div class="product-rating">
         <span class="stars">
-          <i v-for="n in 5" :key="n" :class="n <= Math.floor(product.rating) ? 'bi bi-star-fill' : 'bi bi-star'"></i>
+          <i v-for="n in 5" :key="n" :class="n <= Math.floor(product.rating || 0) ? 'bi bi-star-fill' : 'bi bi-star'"></i>
         </span>
-        <span class="rating-count">({{ product.reviews || 0 }})</span>
+        <span class="rating-count">({{ product.reviews_count || 0 }})</span>
       </div>
 
       <!-- Price -->
       <div class="product-price">
         <span class="current-price">${{ product.price }}</span>
-        <span v-if="product.originalPrice" class="original-price">${{ product.originalPrice }}</span>
+        <span v-if="product.compare_price" class="original-price">${{ product.compare_price }}</span>
+      </div>
+
+      <!-- Stock Status -->
+      <div class="product-stock" :class="{ 'out-of-stock': product.stock_quantity <= 0 }">
+        {{ product.stock_quantity > 0 ? '✅ In Stock' : '❌ Out of Stock' }}
       </div>
 
       <!-- Add to Cart Button -->
-      <button class="btn-primary-modern add-to-cart" @click.stop="addToCart">
-        <i class="bi bi-cart-plus me-2"></i>Add to Cart
+      <button 
+        class="btn-primary-modern add-to-cart" 
+        @click.stop="addToCart"
+        :disabled="product.stock_quantity <= 0 || isAddingToCart"
+      >
+        <i class="bi bi-cart-plus me-2"></i>
+        {{ product.stock_quantity > 0 ? 'Add to Cart' : 'Out of Stock' }}
       </button>
     </div>
   </div>
@@ -61,16 +71,16 @@ const props = defineProps({
     default: () => ({
       id: 1,
       name: 'Product Name',
-      vendor: 'Vendor Name',
+      vendor: null,
       price: 49.99,
-      originalPrice: null,
+      compare_price: null,
       rating: 4.5,
-      reviews: 0,
-      image: null,
+      reviews_count: 0,
+      images: [],
       emoji: '📦',
-      isNew: false,
-      discount: null,
-      imageBg: '#e8ecf1'
+      is_new: false,
+      discount_percentage: null,
+      stock_quantity: 10
     })
   }
 })
@@ -80,17 +90,47 @@ const imageError = ref(false)
 const isAddingToCart = ref(false)
 const isTogglingWishlist = ref(false)
 
+// ===== GET PRODUCT IMAGE =====
+const getProductImage = () => {
+  // Check if product has images array with data
+  if (props.product.images && props.product.images.length > 0) {
+    const imagePath = props.product.images[0].image_path
+    if (imagePath) {
+      // If path already has http, use it directly
+      if (imagePath.startsWith('http')) {
+        return imagePath
+      }
+      // Otherwise, prepend the storage URL
+      return `http://localhost:8000/storage/${imagePath}`
+    }
+  }
+  
+  // Check if product has direct image property (fallback for mock data)
+  if (props.product.image) {
+    if (props.product.image.startsWith('http')) {
+      return props.product.image
+    }
+    return `http://localhost:8000/storage/${props.product.image}`
+  }
+  
+  return null
+}
+
 // ===== GET VENDOR NAME =====
 const getVendorName = () => {
-  // If vendor is an object with shop_name, use that
-  if (props.product.vendor && typeof props.product.vendor === 'object') {
-    return props.product.vendor.shop_name || 'ShopSphere'
+  // If vendor is an object with name or shop_name
+  if (props.product.vendor) {
+    if (typeof props.product.vendor === 'object') {
+      return props.product.vendor.shop_name || props.product.vendor.name || 'ShopSphere'
+    }
+    if (typeof props.product.vendor === 'string') {
+      return props.product.vendor
+    }
   }
-  // If vendor is a string, use it directly
-  if (typeof props.product.vendor === 'string') {
-    return props.product.vendor
+  // If vendor_id exists but no vendor object
+  if (props.product.vendor_id) {
+    return 'Vendor #' + props.product.vendor_id
   }
-  // Fallback
   return 'ShopSphere'
 }
 
@@ -127,14 +167,12 @@ const toggleWishlist = async () => {
         const response = await wishlistApi.removeFromWishlist(props.product.id)
         if (response.data.success) {
           isWishlisted.value = false
-          alert('💔 Removed from wishlist!')
           await updateWishlistCountAndDispatch()
         }
       } else {
         const response = await wishlistApi.addToWishlist(props.product.id)
         if (response.data.success) {
           isWishlisted.value = true
-          alert('❤️ Added to wishlist!')
           await updateWishlistCountAndDispatch()
         }
       }
@@ -147,7 +185,6 @@ const toggleWishlist = async () => {
   }
   
   isTogglingWishlist.value = false
-  emit('wishlist-toggle', { productId: props.product.id, isWishlisted: isWishlisted.value })
 }
 
 // ===== UPDATE WISHLIST COUNT =====
@@ -186,15 +223,13 @@ const toggleWishlistLocal = () => {
     if (!exists) {
       wishlist.push({
         ...props.product,
-        image: props.product.image || null
+        image: getProductImage()
       })
       localStorage.setItem('shopsphere_wishlist', JSON.stringify(wishlist))
-      alert('❤️ Added to wishlist!')
     }
   } else {
     wishlist = wishlist.filter(item => item.id !== props.product.id)
     localStorage.setItem('shopsphere_wishlist', JSON.stringify(wishlist))
-    alert('💔 Removed from wishlist!')
   }
   
   const items = JSON.parse(localStorage.getItem('shopsphere_wishlist') || '[]')
@@ -233,7 +268,7 @@ const updateCartCountAndDispatch = async () => {
 
 // ===== ADD TO CART =====
 const addToCart = async () => {
-  if (isAddingToCart.value) return
+  if (isAddingToCart.value || props.product.stock_quantity <= 0) return
   isAddingToCart.value = true
 
   try {
@@ -242,9 +277,16 @@ const addToCart = async () => {
     if (token) {
       const response = await cartApi.addToCart(props.product.id, 1)
       if (response.data.success) {
-        alert(`🛒 Added "${props.product.name}" to cart!`)
         await updateCartCountAndDispatch()
-        emit('add-to-cart', props.product)
+        // Show success feedback
+        const btn = document.querySelector('.add-to-cart')
+        if (btn) {
+          const originalText = btn.innerHTML
+          btn.innerHTML = '✅ Added!'
+          setTimeout(() => {
+            btn.innerHTML = originalText
+          }, 1500)
+        }
       }
     } else {
       let cart = JSON.parse(localStorage.getItem('shopsphere_cart') || '[]')
@@ -256,19 +298,25 @@ const addToCart = async () => {
         cart.push({
           ...props.product,
           quantity: 1,
-          image: props.product.image || null
+          image: getProductImage()
         })
       }
       
       localStorage.setItem('shopsphere_cart', JSON.stringify(cart))
       await updateCartCountAndDispatch()
       
-      const message = existingItem ? `Added another "${props.product.name}" to cart!` : `Added "${props.product.name}" to cart!`
-      alert(`🛒 ${message}`)
-      emit('add-to-cart', props.product)
+      const btn = document.querySelector('.add-to-cart')
+      if (btn) {
+        const originalText = btn.innerHTML
+        btn.innerHTML = '✅ Added!'
+        setTimeout(() => {
+          btn.innerHTML = originalText
+        }, 1500)
+      }
     }
   } catch (error) {
     console.error('Error adding to cart:', error)
+    // Fallback to localStorage
     let cart = JSON.parse(localStorage.getItem('shopsphere_cart') || '[]')
     const existingItem = cart.find(item => item.id === props.product.id)
     
@@ -278,16 +326,12 @@ const addToCart = async () => {
       cart.push({
         ...props.product,
         quantity: 1,
-        image: props.product.image || null
+        image: getProductImage()
       })
     }
     
     localStorage.setItem('shopsphere_cart', JSON.stringify(cart))
     await updateCartCountAndDispatch()
-    
-    const message = existingItem ? `Added another "${props.product.name}" to cart!` : `Added "${props.product.name}" to cart!`
-    alert(`🛒 ${message}`)
-    emit('add-to-cart', props.product)
   } finally {
     isAddingToCart.value = false
   }
@@ -383,7 +427,7 @@ onMounted(() => {
 }
 
 .product-badge.new {
-  background: var(--gradient-accent);
+  background: #10b981;
 }
 
 .product-badge.discount {
@@ -499,7 +543,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin: 4px 0 8px;
+  margin: 4px 0 4px;
 }
 
 .current-price {
@@ -514,11 +558,26 @@ onMounted(() => {
   text-decoration: line-through;
 }
 
+.product-stock {
+  font-size: 0.8rem;
+  color: #10b981;
+  margin-bottom: 4px;
+}
+
+.product-stock.out-of-stock {
+  color: #ef4444;
+}
+
 .add-to-cart {
   width: 100%;
   text-align: center;
   padding: 10px;
   font-size: 14px;
+}
+
+.add-to-cart:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 @media (prefers-color-scheme: dark) {

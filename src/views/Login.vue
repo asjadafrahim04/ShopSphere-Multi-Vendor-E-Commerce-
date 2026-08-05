@@ -167,7 +167,7 @@ const handleLogin = async () => {
   isLoading.value = true
 
   try {
-    const response = await api.post('/login', {
+    const response = await api.post('http://localhost:8000/api/login', {
       email: form.email,
       password: form.password
     })

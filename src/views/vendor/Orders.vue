@@ -1,89 +1,243 @@
 <template>
   <div class="vendor-orders">
     <div class="page-header">
-      <h1>Orders</h1>
-      <p>Manage your customer orders</p>
+      <div>
+        <h1>Orders</h1>
+        <p class="text-muted">Manage your orders</p>
+      </div>
     </div>
 
-    <div class="orders-wrapper">
-      <div v-if="loading" class="loading-state">Loading orders...</div>
-      <div v-else-if="orders.length > 0" class="orders-list">
-        <div v-for="order in orders" :key="order.id" class="order-card">
-          <div class="order-header">
-            <div class="order-info">
-              <span class="order-number">#{{ order.order_number }}</span>
-              <span class="order-date">{{ formatDate(order.created_at) }}</span>
-              <span class="customer-info">
-                <i class="bi bi-person"></i>
-                {{ order.user?.name || 'Guest' }}
-              </span>
-              <span class="order-total">${{ order.total.toFixed(2) }}</span>
-            </div>
-            <div class="order-actions">
-              <select v-model="order.status" @change="updateStatus(order.id, order.status)" class="status-select">
-                <option value="pending">Pending</option>
-                <option value="processing">Processing</option>
-                <option value="shipped">Shipped</option>
-                <option value="delivered">Delivered</option>
-                <option value="cancelled">Cancelled</option>
-              </select>
-            </div>
-          </div>
-          <div class="order-items">
-            <div v-for="item in order.items" :key="item.id" class="order-item">
-              <span class="item-name">{{ item.name || item.product?.name }}</span>
-              <span class="item-qty">Qty: {{ item.quantity }}</span>
-              <span class="item-price">${{ (item.price * item.quantity).toFixed(2) }}</span>
-            </div>
-          </div>
-        </div>
+    <!-- Debug Info -->
+    <div v-if="debugInfo" class="debug-info">
+      {{ debugInfo }}
+    </div>
+
+    <!-- Filters -->
+    <div class="filters-bar">
+      <div class="search-box">
+        <i class="bi bi-search"></i>
+        <input 
+          v-model="filters.search" 
+          placeholder="Search orders..." 
+          @input="applyFilters"
+        />
       </div>
-      <div v-else class="empty-state">
-        <i class="bi bi-inbox"></i>
-        <p>No orders yet</p>
+      <div class="filter-group">
+        <select v-model="filters.status" @change="applyFilters">
+          <option value="">All Status</option>
+          <option value="pending">Pending</option>
+          <option value="processing">Processing</option>
+          <option value="shipped">Shipped</option>
+          <option value="delivered">Delivered</option>
+          <option value="cancelled">Cancelled</option>
+        </select>
+        <select v-model="filters.sort" @change="applyFilters">
+          <option value="newest">Newest First</option>
+          <option value="oldest">Oldest First</option>
+          <option value="total_high">Highest Total</option>
+          <option value="total_low">Lowest Total</option>
+        </select>
       </div>
     </div>
+
+    <!-- Orders Table -->
+    <div class="orders-table-wrapper">
+      <div v-if="loading" class="loading-state">Loading orders...</div>
+      
+      <table v-else-if="orders.length > 0" class="orders-table">
+        <thead>
+          <tr>
+            <th>Order #</th>
+            <th>Customer</th>
+            <th>Items</th>
+            <th>Total</th>
+            <th>Status</th>
+            <th>Date</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="order in orders" :key="order.id">
+            <td class="order-number">#{{ order.order_number || order.id }}</td>
+            <td>
+              <div class="customer-info">
+                <div class="customer-name">{{ order.user?.name || 'N/A' }}</div>
+                <div class="customer-email">{{ order.user?.email || 'N/A' }}</div>
+              </div>
+            </td>
+            <td>{{ order.vendor_items_count || order.items?.length || 0 }}</td>
+            <td class="order-total">${{ Number(order.vendor_subtotal || order.total || 0).toFixed(2) }}</td>
+            <td>
+              <span class="status-badge" :class="'status-' + (order.status || 'pending')">
+                {{ order.status || 'N/A' }}
+              </span>
+            </td>
+            <td>{{ formatDate(order.created_at) }}</td>
+            <td>
+              <button class="btn-action view" @click="viewOrder(order.id)">
+                <i class="bi bi-eye"></i>
+              </button>
+              <button class="btn-action edit" @click="openStatusModal(order)">
+                <i class="bi bi-pencil"></i>
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div v-else-if="!loading" class="empty-state">
+        <i class="bi bi-inbox"></i>
+        <p>No orders found</p>
+        <p class="empty-sub">Orders will appear here once customers purchase your products.</p>
+      </div>
+    </div>
+
+    <!-- Pagination -->
+    <Pagination 
+      v-if="pagination.last_page > 1"
+      :current-page="pagination.current_page"
+      :total-pages="pagination.last_page"
+      @page-change="changePage"
+    />
+
+    <!-- Status Update Modal -->
+    <StatusModal
+      v-if="isStatusModalOpen"
+      :order="selectedOrder"
+      @close="isStatusModalOpen = false"
+      @updated="onStatusUpdated"
+    />
+
+    <!-- Order Details Modal -->
+    <OrderDetailModal
+      v-if="isDetailModalOpen"
+      :order="selectedOrder"
+      @close="isDetailModalOpen = false"
+    />
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
-import { vendorApi } from '@/services/api'
+import { ref, reactive, onMounted } from 'vue'
+import axios from 'axios'
+import Pagination from '@/components/Pagination.vue'
+import StatusModal from '@/components/vendor/StatusModal.vue'
+import OrderDetailModal from '@/components/vendor/OrderDetailModal.vue'
 
 const orders = ref([])
 const loading = ref(true)
+const isStatusModalOpen = ref(false)
+const isDetailModalOpen = ref(false)
+const selectedOrder = ref(null)
+const debugInfo = ref('')
 
-const formatDate = (date) => {
-  if (!date) return 'N/A'
-  return new Date(date).toLocaleDateString('en-BD', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric'
-  })
-}
+const filters = reactive({
+  search: '',
+  status: '',
+  sort: 'newest'
+})
+
+const pagination = reactive({
+  current_page: 1,
+  last_page: 1,
+  per_page: 15,
+  total: 0
+})
 
 const loadOrders = async () => {
   loading.value = true
+  debugInfo.value = 'Loading orders...'
+  
   try {
-    const response = await vendorApi.getVendorOrders()
+    const token = localStorage.getItem('token')
+    
+    if (!token) {
+      debugInfo.value = '❌ No token found. Please login again.'
+      loading.value = false
+      return
+    }
+    
+    console.log('🔍 Fetching orders with token:', token.substring(0, 20) + '...')
+    
+    // ✅ FIX: Use full URL with port 8000
+    const response = await axios.get('http://localhost:8000/api/vendor/orders', {
+      params: {
+        page: pagination.current_page,
+        search: filters.search || undefined,
+        status: filters.status || undefined,
+        sort: filters.sort || undefined
+      },
+      headers: { 
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/json'
+      }
+    })
+    
+    console.log('📦 Orders response:', response.data)
+    debugInfo.value = `✅ Response received: ${response.status}`
+    
     if (response.data.success) {
-      orders.value = response.data.data.data || []
+      const data = response.data.data
+      orders.value = data.data || []
+      pagination.current_page = data.current_page || 1
+      pagination.last_page = data.last_page || 1
+      pagination.per_page = data.per_page || 15
+      pagination.total = data.total || 0
+      
+      console.log('✅ Orders loaded:', orders.value.length)
+      debugInfo.value = `✅ Loaded ${orders.value.length} orders`
+    } else {
+      debugInfo.value = '❌ API returned error: ' + (response.data.message || 'Unknown error')
     }
   } catch (error) {
-    console.error('Error loading orders:', error)
+    console.error('❌ Error loading orders:', error)
+    console.error('Response:', error.response?.data)
+    
+    if (error.response?.status === 401) {
+      debugInfo.value = '❌ Authentication failed. Please login again.'
+    } else if (error.response?.status === 404) {
+      debugInfo.value = '❌ API endpoint not found. Please check backend is running on port 8000.'
+    } else {
+      debugInfo.value = `❌ Error: ${error.response?.data?.message || error.message}`
+    }
   } finally {
     loading.value = false
   }
 }
 
-const updateStatus = async (orderId, status) => {
-  try {
-    await vendorApi.updateOrderStatus(orderId, status)
-    alert('Order status updated!')
-  } catch (error) {
-    alert('Failed to update status.')
-    loadOrders()
-  }
+const applyFilters = () => {
+  pagination.current_page = 1
+  loadOrders()
+}
+
+const changePage = (page) => {
+  pagination.current_page = page
+  loadOrders()
+}
+
+const viewOrder = (id) => {
+  const order = orders.value.find(o => o.id === id)
+  selectedOrder.value = order
+  isDetailModalOpen.value = true
+}
+
+const openStatusModal = (order) => {
+  selectedOrder.value = order
+  isStatusModalOpen.value = true
+}
+
+const onStatusUpdated = () => {
+  isStatusModalOpen.value = false
+  loadOrders()
+}
+
+const formatDate = (date) => {
+  if (!date) return 'N/A'
+  return new Date(date).toLocaleDateString('en-US', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric'
+  })
 }
 
 onMounted(() => {
@@ -94,6 +248,8 @@ onMounted(() => {
 <style scoped>
 .vendor-orders {
   padding: 24px;
+  max-width: 1400px;
+  margin: 0 auto;
 }
 
 .page-header {
@@ -101,133 +257,242 @@ onMounted(() => {
 }
 
 .page-header h1 {
-  font-size: 2rem;
+  font-size: 28px;
   font-weight: 700;
-  color: var(--text-primary);
+  margin: 0;
+  color: #1a1a2e;
 }
 
-.page-header p {
-  color: var(--text-secondary);
+.text-muted {
+  color: #6b7280;
+  margin: 4px 0 0;
 }
 
-.orders-wrapper {
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius);
+.debug-info {
+  background: #f3f4f6;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #6b7280;
+  margin-bottom: 16px;
+  font-family: monospace;
+}
+
+.filters-bar {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.search-box {
+  flex: 1;
+  min-width: 200px;
+  display: flex;
+  align-items: center;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 8px 16px;
+}
+
+.search-box i {
+  color: #9ca3af;
+  margin-right: 8px;
+}
+
+.search-box input {
+  flex: 1;
+  border: none;
+  outline: none;
+  font-size: 14px;
+  background: transparent;
+}
+
+.filter-group {
+  display: flex;
+  gap: 12px;
+}
+
+.filter-group select {
+  padding: 8px 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: white;
+  font-size: 14px;
+  outline: none;
+}
+
+.orders-table-wrapper {
+  background: white;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
   overflow: hidden;
 }
 
-.orders-list {
-  padding: 16px;
+.orders-table {
+  width: 100%;
+  border-collapse: collapse;
 }
 
-.order-card {
-  background: var(--bg-secondary);
-  border-radius: var(--radius-sm);
-  padding: 16px;
-  margin-bottom: 12px;
+.orders-table th {
+  padding: 14px 16px;
+  text-align: left;
+  background: #f9fafb;
+  font-weight: 600;
+  font-size: 13px;
+  color: #6b7280;
+  border-bottom: 1px solid #e5e7eb;
 }
 
-.order-card:last-child {
-  margin-bottom: 0;
+.orders-table td {
+  padding: 14px 16px;
+  border-bottom: 1px solid #f3f4f6;
+  font-size: 14px;
+  color: #1a1a2e;
 }
 
-.order-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-bottom: 12px;
+.orders-table tr:last-child td {
+  border-bottom: none;
 }
 
-.order-info {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
+.orders-table tr:hover {
+  background: #f9fafb;
 }
 
 .order-number {
   font-weight: 600;
-  color: var(--text-primary);
-}
-
-.order-date {
-  color: var(--text-muted);
-  font-size: 0.85rem;
-}
-
-.customer-info {
-  color: var(--text-secondary);
-  font-size: 0.9rem;
-}
-
-.order-total {
-  font-weight: 700;
   color: #667eea;
 }
 
-.status-select {
-  padding: 6px 12px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  background: var(--bg-card);
-  color: var(--text-primary);
-  font-size: 0.85rem;
-  cursor: pointer;
-}
-
-.order-items {
-  border-top: 1px solid var(--border-color);
-  padding-top: 12px;
-}
-
-.order-item {
+.customer-info {
   display: flex;
-  justify-content: space-between;
-  padding: 4px 0;
-  font-size: 0.9rem;
-  color: var(--text-secondary);
+  flex-direction: column;
+}
+
+.customer-name {
+  font-weight: 500;
+}
+
+.customer-email {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.order-total {
+  font-weight: 600;
+  color: #667eea;
+}
+
+.status-badge {
+  padding: 4px 12px;
+  border-radius: 50px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.status-pending {
+  background: #fef3c7;
+  color: #d97706;
+}
+
+.status-processing {
+  background: #dbeafe;
+  color: #2563eb;
+}
+
+.status-shipped {
+  background: #e0e7ff;
+  color: #4f46e5;
+}
+
+.status-delivered {
+  background: #d1fae5;
+  color: #059669;
+}
+
+.status-cancelled {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.btn-action {
+  padding: 4px 8px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  margin-right: 4px;
+  transition: all 0.2s ease;
+}
+
+.btn-action.view {
+  background: #e0e7ff;
+  color: #4f46e5;
+}
+
+.btn-action.view:hover {
+  background: #c7d2fe;
+}
+
+.btn-action.edit {
+  background: #d1fae5;
+  color: #059669;
+}
+
+.btn-action.edit:hover {
+  background: #a7f3d0;
 }
 
 .loading-state {
-  padding: 40px;
   text-align: center;
-  color: var(--text-muted);
+  padding: 40px;
+  color: #6b7280;
 }
 
 .empty-state {
-  padding: 60px;
   text-align: center;
-  color: var(--text-muted);
+  padding: 60px 20px;
 }
 
 .empty-state i {
-  font-size: 3rem;
+  font-size: 48px;
+  color: #d1d5db;
   display: block;
   margin-bottom: 12px;
-  opacity: 0.5;
+}
+
+.empty-state p {
+  margin: 0 0 4px;
+  color: #6b7280;
+}
+
+.empty-sub {
+  font-size: 13px;
+  color: #9ca3af;
 }
 
 @media (max-width: 768px) {
-  .vendor-orders {
-    padding: 16px;
-  }
-
-  .order-header {
+  .filters-bar {
     flex-direction: column;
-    align-items: stretch;
   }
-
-  .order-info {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
+  
+  .filter-group {
+    flex-wrap: wrap;
   }
-
-  .order-items {
-    font-size: 0.85rem;
+  
+  .orders-table-wrapper {
+    overflow-x: auto;
+  }
+  
+  .orders-table {
+    font-size: 13px;
+  }
+  
+  .orders-table th,
+  .orders-table td {
+    padding: 10px 12px;
   }
 }
 </style>
