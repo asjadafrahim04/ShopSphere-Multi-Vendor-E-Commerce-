@@ -89,6 +89,7 @@
 
           <!-- Profile / Sign In Button -->
           <div v-if="isLoggedIn" class="user-menu">
+            <!-- ✅ FIX: Vendor goes to vendor profile, customer goes to customer profile -->
             <button class="btn-primary-modern profile-btn" @click="goToProfile">
               <i class="bi bi-person me-1"></i>
               <span class="user-name">{{ userName }}</span>
@@ -168,7 +169,8 @@
 
         <!-- Mobile Profile / Login -->
         <div v-if="isLoggedIn" class="mobile-user-section">
-          <router-link to="/profile" class="mobile-link" @click="isMenuOpen = false">
+          <!-- ✅ FIX: Vendor goes to vendor profile, customer goes to customer profile -->
+          <router-link :to="isVendor ? '/vendor/profile' : '/profile'" class="mobile-link" @click="isMenuOpen = false">
             <i class="bi bi-person me-2"></i>{{ userName }}
           </router-link>
           <button class="mobile-link mobile-logout" @click="handleLogout">
@@ -275,6 +277,16 @@ const handleLogout = () => {
   router.push('/login')
 }
 
+// ===== ✅ FIX: ROLE-BASED PROFILE NAVIGATION =====
+const goToProfile = () => {
+  isMenuOpen.value = false
+  if (isVendor.value) {
+    router.push('/vendor/profile')
+  } else {
+    router.push('/profile')
+  }
+}
+
 // ===== CART FUNCTIONS =====
 const updateCartCount = async () => {
   try {
@@ -286,7 +298,6 @@ const updateCartCount = async () => {
         return
       }
     }
-    // Fallback to localStorage
     const savedCart = localStorage.getItem('shopsphere_cart')
     if (savedCart) {
       const items = JSON.parse(savedCart)
@@ -347,10 +358,6 @@ const goToOrders = () => {
   isMenuOpen.value = false
   router.push('/orders')
 }
-const goToProfile = () => {
-  isMenuOpen.value = false
-  router.push('/profile')
-}
 
 // ===== SEARCH FUNCTIONS =====
 const performSearch = () => {
@@ -377,10 +384,9 @@ const loadProducts = async () => {
     const response = await fetch('http://localhost:8000/api/products')
     if (response.ok) {
       const data = await response.json()
-      allProducts.value = data.data || []
+      allProducts.value = data.data?.data || data.data || []
     }
   } catch (error) {
-    // Fallback products
     allProducts.value = [
       { id: 1, name: 'Wireless Headphones', vendor: 'TechShop', price: 49.99, emoji: '🎧' },
       { id: 2, name: 'Leather Jacket', vendor: 'FashionHub', price: 89.99, emoji: '🧥' },
@@ -399,7 +405,6 @@ onMounted(() => {
   updateWishlistCount()
   loadProducts()
   
-  // Listen for events
   window.addEventListener('auth-changed', () => {
     checkAuth()
     updateCartCount()
@@ -428,14 +433,13 @@ onUnmounted(() => {
   window.removeEventListener('storage', checkAuth)
 })
 
-// Watch route changes to update active states
 watch(() => route.path, () => {
-  // Close mobile menu on route change
   isMenuOpen.value = false
 })
 </script>
 
 <style scoped>
+/* ===== ALL YOUR EXISTING STYLES REMAIN THE SAME ===== */
 .navbar-modern {
   background: var(--bg-primary);
   border-bottom: 1px solid var(--border-color);
@@ -474,7 +478,6 @@ watch(() => route.path, () => {
   font-size: 1.8rem;
 }
 
-/* ===== SEARCH BAR ===== */
 .search-bar {
   position: relative;
   flex: 1;
@@ -614,7 +617,6 @@ watch(() => route.path, () => {
   font-size: 1.2rem;
 }
 
-/* ===== MOBILE SEARCH ===== */
 .mobile-search {
   display: none;
   padding: 8px 0 4px;
@@ -629,7 +631,6 @@ watch(() => route.path, () => {
   height: 34px;
 }
 
-/* ===== NAV LINKS ===== */
 .navbar-links {
   display: flex;
   align-items: center;
@@ -665,7 +666,6 @@ watch(() => route.path, () => {
   background: rgba(102, 126, 234, 0.12);
 }
 
-/* ===== ACTIONS ===== */
 .navbar-actions {
   display: flex;
   align-items: center;
@@ -698,7 +698,6 @@ watch(() => route.path, () => {
   font-size: 1rem;
 }
 
-/* ===== WISHLIST BADGE ===== */
 .wishlist-btn-nav {
   position: relative;
 }
@@ -719,7 +718,6 @@ watch(() => route.path, () => {
   justify-content: center;
 }
 
-/* ===== CART BADGE ===== */
 .cart-btn {
   position: relative;
 }
@@ -747,7 +745,6 @@ watch(() => route.path, () => {
   100% { transform: scale(1); }
 }
 
-/* ===== USER MENU ===== */
 .user-menu {
   display: flex;
   align-items: center;
@@ -774,7 +771,6 @@ watch(() => route.path, () => {
   font-size: 13px !important;
 }
 
-/* ===== THEME TOGGLE ===== */
 .theme-toggle {
   font-size: 1.2rem;
   color: var(--text-primary);
@@ -785,7 +781,6 @@ watch(() => route.path, () => {
   transform: rotate(30deg);
 }
 
-/* ===== MOBILE ===== */
 .mobile-toggle {
   display: none;
   flex-direction: column;
@@ -898,7 +893,6 @@ watch(() => route.path, () => {
   color: white !important;
 }
 
-/* ===== RESPONSIVE ===== */
 @media (max-width: 992px) {
   .navbar-links {
     display: none;
@@ -994,7 +988,6 @@ watch(() => route.path, () => {
   }
 }
 
-/* ===== DARK MODE ===== */
 html.dark .cart-badge {
   background: #ef4444;
 }

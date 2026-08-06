@@ -17,7 +17,7 @@
 </template>
 
 <script setup>
-import { computed, watch, ref } from 'vue'
+import { computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Navbar from './components/Navbar.vue'
 import Footer from './components/Footer.vue'
@@ -30,16 +30,50 @@ const isVendorRoute = computed(() => {
   return route.path.startsWith('/vendor')
 })
 
+// ✅ Check if user is a vendor
+const isVendor = () => {
+  const user = JSON.parse(localStorage.getItem('user') || 'null')
+  const token = localStorage.getItem('token')
+  return token && (user?.role === 'vendor' || user?.role === 'admin')
+}
+
+// ✅ Redirect vendor from homepage to dashboard
+const redirectVendorFromHome = () => {
+  if (route.path === '/' && isVendor()) {
+    console.log('🔀 Vendor detected on homepage. Redirecting to dashboard...')
+    router.push('/vendor/dashboard')
+    return true
+  }
+  return false
+}
+
 // Watch for route changes to handle vendor routing
 watch(() => route.path, (newPath) => {
+  // ✅ Check if vendor is on homepage
+  if (newPath === '/' && isVendor()) {
+    router.push('/vendor/dashboard')
+    return
+  }
+
   // If user is on vendor page but not authenticated, redirect to login
   if (newPath.startsWith('/vendor')) {
     const token = localStorage.getItem('token')
     if (!token) {
       router.push('/login')
+      return
+    }
+    // ✅ If user is on vendor page but not a vendor, redirect to home
+    const user = JSON.parse(localStorage.getItem('user') || 'null')
+    if (user?.role !== 'vendor' && user?.role !== 'admin') {
+      router.push('/')
     }
   }
 }, { immediate: true })
+
+// ✅ Check on mount
+onMounted(() => {
+  redirectVendorFromHome()
+})
 </script>
 
 <style>

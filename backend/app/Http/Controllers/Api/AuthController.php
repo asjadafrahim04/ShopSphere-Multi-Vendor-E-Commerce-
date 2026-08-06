@@ -55,7 +55,14 @@ class AuthController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'User registered successfully',
-            'user' => $user,
+            'user' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'phone' => $user->phone,
+                'role' => $user->role,
+                'vendor' => $user->vendor,
+            ],
             'token' => $token,
             'token_type' => 'Bearer',
         ], 201);
@@ -86,13 +93,26 @@ class AuthController extends Controller
         $user = Auth::user();
         $token = $user->createToken('auth_token')->plainTextToken;
 
+        // ✅ Load vendor relationship if exists
+        $user->load('vendor');
+
         return response()->json([
             'success' => true,
             'message' => 'Login successful',
-            'user' => $user,
+            'user' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'phone' => $user->phone,
+                'avatar' => $user->avatar,
+                'role' => $user->role,  // ✅ CRITICAL - This must be included
+                'is_active' => $user->is_active,
+                'vendor' => $user->vendor,
+                'created_at' => $user->created_at,
+                'updated_at' => $user->updated_at,
+            ],
             'token' => $token,
             'token_type' => 'Bearer',
-            'role' => $user->role,
         ]);
     }
 
@@ -112,7 +132,7 @@ class AuthController extends Controller
     {
         return response()->json([
             'success' => true,
-            'user' => $request->user()
+            'user' => $request->user()->load('vendor')
         ]);
     }
 

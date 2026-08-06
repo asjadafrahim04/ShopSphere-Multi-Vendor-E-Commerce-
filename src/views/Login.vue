@@ -167,20 +167,40 @@ const handleLogin = async () => {
   isLoading.value = true
 
   try {
+    console.log('📤 Login request:', { email: form.email })
+
     const response = await api.post('http://localhost:8000/api/login', {
       email: form.email,
       password: form.password
     })
 
+    console.log('📥 Login response:', response.data)
+    console.log('📥 User data:', response.data.user)
+    console.log('📥 User role:', response.data.user?.role)
+
     if (response.data.success) {
+      const userData = response.data.user
+      
       // Save token and user data
       localStorage.setItem('token', response.data.token)
-      localStorage.setItem('user', JSON.stringify(response.data.user))
+      localStorage.setItem('user', JSON.stringify({
+        id: userData.id,
+        name: userData.name,
+        email: userData.email,
+        role: userData.role,
+        phone: userData.phone || '',
+        avatar: userData.avatar || null,
+        vendor: userData.vendor || null,
+        created_at: userData.created_at,
+        updated_at: userData.updated_at,
+      }))
       
-      // Remove old localStorage cart (will be fetched from API)
+      const savedUser = JSON.parse(localStorage.getItem('user'))
+      console.log('✅ Saved user:', savedUser)
+      console.log('✅ Saved role:', savedUser?.role)
+      
       localStorage.removeItem('shopsphere_cart')
       
-      // Dispatch events
       window.dispatchEvent(new CustomEvent('auth-changed'))
       window.dispatchEvent(new CustomEvent('cart-updated'))
       
@@ -188,14 +208,25 @@ const handleLogin = async () => {
       
       // ✅ FIX: Redirect based on user role
       const user = response.data.user
-      if (user?.role === 'vendor' || user?.role === 'admin') {
-        router.push('/vendor/dashboard')  // Vendors go to dashboard
+      const userRole = user?.role
+      
+      console.log('🔍 User role detected:', userRole)
+      
+      if (userRole === 'admin') {
+        console.log('🔀 Redirecting admin to admin dashboard')
+        router.push('/admin/dashboard')
+      } else if (userRole === 'vendor') {
+        console.log('🔀 Redirecting vendor to vendor dashboard')
+        router.push('/vendor/dashboard')
       } else {
-        router.push('/')  // Customers go to home
+        console.log('🏠 Redirecting customer to home')
+        router.push('/')
       }
     }
   } catch (error) {
     isLoading.value = false
+    console.error('❌ Login error:', error)
+    console.error('❌ Response:', error.response?.data)
     
     if (error.response) {
       if (error.response.status === 401) {

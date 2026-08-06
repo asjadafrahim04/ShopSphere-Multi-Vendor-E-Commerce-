@@ -247,7 +247,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import ProductCard from '../components/ProductCard.vue'
 
@@ -271,7 +271,6 @@ const fetchProducts = async () => {
     console.log('✅ API Response:', data)
     
     if (data.success) {
-      // Products are inside data.data.data
       allProducts.value = data.data.data || []
       console.log('✅ Products loaded:', allProducts.value.length)
     } else {
@@ -503,8 +502,31 @@ const handleViewProduct = (product) => {
   router.push(`/product/${product.id}`)
 }
 
+// ===== ✅ FIX: REDIRECT VENDORS AWAY FROM HOMEPAGE =====
+const checkVendorRedirect = () => {
+  const token = localStorage.getItem('token')
+  const user = JSON.parse(localStorage.getItem('user') || 'null')
+  
+  if (token && user?.role === 'vendor') {
+    console.log('🔀 Vendor detected on homepage. Redirecting to dashboard...')
+    router.push('/vendor/dashboard')
+    return true
+  }
+  return false
+}
+
+// ===== ✅ FIX: WATCH FOR AUTH CHANGES =====
+watch(() => localStorage.getItem('user'), () => {
+  checkVendorRedirect()
+})
+
 // ===== LIFECYCLE =====
 onMounted(() => {
+  // ✅ Check for vendor redirect first
+  if (checkVendorRedirect()) {
+    return // Stop loading homepage
+  }
+  
   checkAndShowPopup()
   startAutoplay()
   fetchProducts()

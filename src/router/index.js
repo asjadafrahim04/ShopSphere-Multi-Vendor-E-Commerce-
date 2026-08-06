@@ -17,10 +17,19 @@ import VendorLayout from '../views/vendor/Layout.vue'
 import VendorDashboard from '../views/vendor/Dashboard.vue'
 import VendorProducts from '../views/vendor/Products.vue'
 import VendorOrders from '../views/vendor/Orders.vue'
-import VendorProfile from '../views/vendor/Profile.vue'  // ✅ Add this
+import VendorProfile from '../views/vendor/Profile.vue'
+
+// Admin Views
+import AdminLayout from '../views/admin/Layout.vue'
+import AdminDashboard from '../views/admin/Dashboard.vue'
+import AdminUsers from '../views/admin/Users.vue'
+import AdminVendors from '../views/admin/Vendors.vue'
+import AdminOrders from '../views/admin/Orders.vue'
+import AdminCategories from '../views/admin/Categories.vue'
+import AdminSettings from '../views/admin/Settings.vue'
 
 const routes = [
-  // Public Routes
+  // ===== PUBLIC ROUTES =====
   { path: '/', name: 'Home', component: Home },
   { path: '/products', name: 'Products', component: Products },
   { path: '/product/:id', name: 'ProductDetail', component: ProductDetail },
@@ -34,7 +43,7 @@ const routes = [
   { path: '/about', name: 'About', component: About },
   { path: '/order-confirmation/:id', name: 'OrderConfirmation', component: OrderConfirmation },
   
-  // Vendor Routes (with Layout)
+  // ===== VENDOR ROUTES =====
   {
     path: '/vendor',
     component: VendorLayout,
@@ -43,7 +52,22 @@ const routes = [
       { path: 'dashboard', name: 'VendorDashboard', component: VendorDashboard },
       { path: 'products', name: 'VendorProducts', component: VendorProducts },
       { path: 'orders', name: 'VendorOrders', component: VendorOrders },
-      { path: 'profile', name: 'VendorProfile', component: VendorProfile },  // ✅ Add this
+      { path: 'profile', name: 'VendorProfile', component: VendorProfile },
+    ]
+  },
+
+  // ===== ADMIN ROUTES =====
+  {
+    path: '/admin',
+    component: AdminLayout,
+    meta: { requiresAdmin: true },
+    children: [
+      { path: 'dashboard', name: 'AdminDashboard', component: AdminDashboard },
+      { path: 'users', name: 'AdminUsers', component: AdminUsers },
+      { path: 'vendors', name: 'AdminVendors', component: AdminVendors },
+      { path: 'orders', name: 'AdminOrders', component: AdminOrders },
+      { path: 'categories', name: 'AdminCategories', component: AdminCategories },
+      { path: 'settings', name: 'AdminSettings', component: AdminSettings },
     ]
   },
 ]
@@ -51,6 +75,92 @@ const routes = [
 const router = createRouter({
   history: createWebHistory(),
   routes
+})
+
+// ===== ✅ FIXED NAVIGATION GUARD =====
+router.beforeEach((to, from, next) => {
+  // Get user data from localStorage
+  const token = localStorage.getItem('token')
+  const userStr = localStorage.getItem('user')
+  
+  let user = null
+  let isVendor = false
+  let isAdmin = false
+  
+  if (userStr) {
+    try {
+      user = JSON.parse(userStr)
+      // ✅ FIX: isVendor should only be true for 'vendor' role, not 'admin'
+      isVendor = user?.role === 'vendor'
+      isAdmin = user?.role === 'admin'
+    } catch (e) {
+      console.error('Error parsing user:', e)
+    }
+  }
+  
+  console.log('🔍 Route guard:', { 
+    path: to.path, 
+    hasToken: !!token, 
+    isVendor, 
+    isAdmin,
+    userRole: user?.role 
+  })
+  
+  // ===== VENDOR ROUTE PROTECTION =====
+  if (to.path.startsWith('/vendor')) {
+    if (!token) {
+      console.log('🔒 Not logged in → redirecting to login')
+      next('/login')
+      return
+    }
+    if (!isVendor) {
+      console.log('🚫 Not a vendor → redirecting to home')
+      next('/')
+      return
+    }
+  }
+  
+  // ===== ADMIN ROUTE PROTECTION =====
+  if (to.path.startsWith('/admin')) {
+    if (!token) {
+      console.log('🔒 Not logged in → redirecting to login')
+      next('/login')
+      return
+    }
+    if (!isAdmin) {
+      console.log('🚫 Not an admin → redirecting to home')
+      next('/')
+      return
+    }
+  }
+  
+  // ===== HOMEPAGE REDIRECT =====
+  if (to.path === '/' && token) {
+    if (isAdmin) {
+      console.log('🔀 Admin on homepage → redirecting to admin dashboard')
+      next('/admin/dashboard')
+      return
+    }
+    if (isVendor) {
+      console.log('🔀 Vendor on homepage → redirecting to vendor dashboard')
+      next('/vendor/dashboard')
+      return
+    }
+  }
+  
+  // ===== LOGIN/REGISTER REDIRECT =====
+  if ((to.path === '/login' || to.path === '/register') && token) {
+    if (isAdmin) {
+      next('/admin/dashboard')
+    } else if (isVendor) {
+      next('/vendor/dashboard')
+    } else {
+      next('/')
+    }
+    return
+  }
+  
+  next()
 })
 
 export default router
