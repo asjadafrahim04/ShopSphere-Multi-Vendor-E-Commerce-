@@ -3,44 +3,46 @@
     <!-- Sidebar -->
     <aside class="admin-sidebar">
       <div class="sidebar-brand">
-        <h2>🛍️ ShopSphere</h2>
+        <h2><span class="logo-icon">🛒</span> ShopSphere</h2>
         <span class="brand-sub">Admin Panel</span>
       </div>
       
       <nav class="sidebar-nav">
         <router-link to="/admin/dashboard" class="nav-link" :class="{ active: $route.path === '/admin/dashboard' }">
           <span class="nav-icon">📊</span>
-          <span class="nav-text">Dashboard</span>
+          <span class="nav-text"> <strong>Dashboard</strong></span>
         </router-link>
         
         <router-link to="/admin/users" class="nav-link" :class="{ active: $route.path === '/admin/users' }">
           <span class="nav-icon">👥</span>
-          <span class="nav-text">Users</span>
+          <span class="nav-text"><strong>Users</strong></span>
         </router-link>
         
         <router-link to="/admin/vendors" class="nav-link" :class="{ active: $route.path === '/admin/vendors' }">
           <span class="nav-icon">🏪</span>
-          <span class="nav-text">Vendors</span>
+          <span class="nav-text"><strong>Vendors</strong></span>
         </router-link>
         
         <router-link to="/admin/orders" class="nav-link" :class="{ active: $route.path === '/admin/orders' }">
           <span class="nav-icon">📦</span>
-          <span class="nav-text">Orders</span>
+          <span class="nav-text"><strong>Orders</strong></span>
         </router-link>
         
         <router-link to="/admin/categories" class="nav-link" :class="{ active: $route.path === '/admin/categories' }">
           <span class="nav-icon">📂</span>
-          <span class="nav-text">Categories</span>
+          <span class="nav-text"><strong>Categories</strong></span>
         </router-link>
         
         <router-link to="/admin/settings" class="nav-link" :class="{ active: $route.path === '/admin/settings' }">
           <span class="nav-icon">⚙️</span>
-          <span class="nav-text">Settings</span>
+          <span class="nav-text"><strong>Settings</strong></span>
         </router-link>
+        
+        <!-- ❌ Dark Mode Toggle REMOVED -->
         
         <a href="#" @click.prevent="handleLogout" class="nav-link logout">
           <span class="nav-icon">🚪</span>
-          <span class="nav-text">Logout</span>
+          <span class="nav-text"><strong>Logout</strong></span>
         </a>
       </nav>
     </aside>
@@ -69,6 +71,7 @@ const handleLogout = () => {
   display: flex;
   min-height: 100vh;
   background: #f0f2f5;
+  transition: background 0.3s ease;
 }
 
 .admin-sidebar {
@@ -81,6 +84,7 @@ const handleLogout = () => {
   top: 0;
   overflow-y: auto;
   z-index: 100;
+  transition: background 0.3s ease;
 }
 
 .sidebar-brand {
@@ -157,6 +161,7 @@ const handleLogout = () => {
   flex: 1;
   min-height: 100vh;
   padding: 24px;
+  transition: background 0.3s ease;
 }
 
 /* Scrollbar */

@@ -3,34 +3,34 @@
     <!-- Sidebar -->
     <aside class="vendor-sidebar">
       <div class="sidebar-brand">
-        <h2>🛍️ ShopSphere</h2>
+        <h2><span class="logo-icon">🛒</span> ShopSphere</h2>
         <span class="brand-sub">Vendor Panel</span>
       </div>
       
       <nav class="sidebar-nav">
         <router-link to="/vendor/dashboard" class="nav-link" :class="{ active: $route.path === '/vendor/dashboard' }">
           <span class="nav-icon">📊</span>
-          <span class="nav-text">Dashboard</span>
+          <span class="nav-text"><strong>Dashboard</strong></span>
         </router-link>
         
         <router-link to="/vendor/products" class="nav-link" :class="{ active: $route.path === '/vendor/products' }">
           <span class="nav-icon">📦</span>
-          <span class="nav-text">Products</span>
+          <span class="nav-text"><strong>Products</strong></span>
         </router-link>
         
         <router-link to="/vendor/orders" class="nav-link" :class="{ active: $route.path === '/vendor/orders' }">
           <span class="nav-icon">🛒</span>
-          <span class="nav-text">Orders</span>
+          <span class="nav-text"><strong>Orders</strong></span>
         </router-link>
         
         <router-link to="/vendor/profile" class="nav-link" :class="{ active: $route.path === '/vendor/profile' }">
           <span class="nav-icon">👤</span>
-          <span class="nav-text">Profile</span>
+          <span class="nav-text"><strong>Profile</strong></span>
         </router-link>
         
         <a href="#" @click.prevent="handleLogout" class="nav-link logout">
           <span class="nav-icon">🚪</span>
-          <span class="nav-text">Logout</span>
+          <span class="nav-text"><strong>Logout</strong></span>
         </a>
       </nav>
     </aside>

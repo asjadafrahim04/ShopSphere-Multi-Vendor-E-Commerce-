@@ -14,6 +14,8 @@ use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\CouponController;
 use App\Http\Controllers\Api\ShippingController;
+use App\Http\Controllers\Api\AnalyticsController;
+use App\Http\Controllers\Api\RecommendationController;
 
 /*
 |--------------------------------------------------------------------------
@@ -62,8 +64,10 @@ Route::get('/vendors/{id}/products', [VendorController::class, 'products']);
 Route::get('/products/{productId}/reviews', [ReviewController::class, 'index']);
 
 // ===== PUBLIC COUPON ROUTES =====
-Route::get('/coupons/validate', [CouponController::class, 'validate']);
+Route::post('/coupons/validate', [CouponController::class, 'validate']);
 
+// ===== PUBLIC RECOMMENDATION ROUTES =====
+Route::get('/recommendations', [RecommendationController::class, 'index']);
 
 // ===================== PROTECTED ROUTES (Require Authentication) =====================
 Route::middleware('auth:sanctum')->group(function () {
@@ -132,6 +136,17 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/{id}/report', [ReviewController::class, 'report']);
     });
     
+    // ===== ✅ USER REVIEWS ROUTE (Get user's reviewed products) =====
+    Route::get('/user/reviews', function (Request $request) {
+        $reviews = App\Models\Review::where('user_id', $request->user()->id)
+            ->select('product_id', 'id', 'rating', 'comment', 'created_at')
+            ->get();
+        return response()->json([
+            'success' => true,
+            'data' => $reviews
+        ]);
+    });
+    
     // ===== SHIPPING ROUTES =====
     Route::prefix('shipping')->group(function () {
         Route::get('/methods', [ShippingController::class, 'methods']);
@@ -144,6 +159,13 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/', [CouponController::class, 'index']);
         Route::get('/{code}', [CouponController::class, 'show']);
         Route::post('/apply', [CouponController::class, 'apply']);
+    });
+    
+    // ===== RECOMMENDATION ROUTES (Personalized) =====
+    Route::prefix('recommendations')->group(function () {
+        Route::get('/personalized', [RecommendationController::class, 'personalized']);
+        Route::get('/trending', [RecommendationController::class, 'trending']);
+        Route::get('/similar/{productId}', [RecommendationController::class, 'similar']);
     });
     
     // ===== VENDOR ROUTES (Only for Vendors) =====
@@ -182,7 +204,7 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('/analytics', [VendorController::class, 'orderAnalytics']);
         });
         
-        // Coupon Management
+        // Coupon Management (Vendor)
         Route::prefix('coupons')->group(function () {
             Route::get('/', [VendorController::class, 'coupons']);
             Route::post('/', [VendorController::class, 'storeCoupon']);
@@ -198,7 +220,7 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('/history', [VendorController::class, 'payoutHistory']);
         });
         
-        // Analytics
+        // Analytics (Vendor)
         Route::prefix('analytics')->group(function () {
             Route::get('/products', [VendorController::class, 'productAnalytics']);
             Route::get('/orders', [VendorController::class, 'orderAnalytics']);

@@ -1,7 +1,7 @@
 <template>
   <div id="app">
-    <!-- Only show Navbar & Footer on non-vendor pages -->
-    <template v-if="!isVendorRoute">
+    <!-- Only show Navbar & Footer on non-vendor and non-admin pages -->
+    <template v-if="!isVendorRoute && !isAdminRoute">
       <Navbar />
       <main class="main-content">
         <router-view />
@@ -10,8 +10,22 @@
     </template>
 
     <!-- Vendor pages - show without navbar/footer -->
-    <template v-else>
+    <template v-else-if="isVendorRoute">
       <router-view />
+    </template>
+
+    <!-- Admin pages - show without navbar/footer -->
+    <template v-else-if="isAdminRoute">
+      <router-view />
+    </template>
+
+    <!-- Default fallback (should never reach here) -->
+    <template v-else>
+      <Navbar />
+      <main class="main-content">
+        <router-view />
+      </main>
+      <Footer />
     </template>
   </div>
 </template>
@@ -25,54 +39,106 @@ import Footer from './components/Footer.vue'
 const route = useRoute()
 const router = useRouter()
 
+// ===== COMPUTED =====
 // Check if current route is vendor section
 const isVendorRoute = computed(() => {
   return route.path.startsWith('/vendor')
 })
 
-// ✅ Check if user is a vendor
+// Check if current route is admin section
+const isAdminRoute = computed(() => {
+  return route.path.startsWith('/admin')
+})
+
+// ===== HELPERS =====
+// Check if user is a vendor
 const isVendor = () => {
-  const user = JSON.parse(localStorage.getItem('user') || 'null')
   const token = localStorage.getItem('token')
-  return token && (user?.role === 'vendor' || user?.role === 'admin')
+  const user = JSON.parse(localStorage.getItem('user') || 'null')
+  return token && user?.role === 'vendor'
 }
 
-// ✅ Redirect vendor from homepage to dashboard
+// Check if user is an admin
+const isAdmin = () => {
+  const token = localStorage.getItem('token')
+  const user = JSON.parse(localStorage.getItem('user') || 'null')
+  return token && user?.role === 'admin'
+}
+
+// Check if user is a customer
+const isCustomer = () => {
+  const token = localStorage.getItem('token')
+  const user = JSON.parse(localStorage.getItem('user') || 'null')
+  return token && user?.role === 'customer'
+}
+
+// ===== REDIRECTS =====
+// Redirect vendor from homepage to dashboard
 const redirectVendorFromHome = () => {
   if (route.path === '/' && isVendor()) {
-    console.log('🔀 Vendor detected on homepage. Redirecting to dashboard...')
+    console.log('🔀 Vendor detected on homepage. Redirecting to vendor dashboard...')
     router.push('/vendor/dashboard')
     return true
   }
   return false
 }
 
+// Redirect admin from homepage to dashboard
+const redirectAdminFromHome = () => {
+  if (route.path === '/' && isAdmin()) {
+    console.log('🔀 Admin detected on homepage. Redirecting to admin dashboard...')
+    router.push('/admin/dashboard')
+    return true
+  }
+  return false
+}
+
+// ===== WATCHERS =====
 // Watch for route changes to handle vendor routing
 watch(() => route.path, (newPath) => {
-  // ✅ Check if vendor is on homepage
+  // Check if admin is on homepage
+  if (newPath === '/' && isAdmin()) {
+    router.push('/admin/dashboard')
+    return
+  }
+
+  // Check if vendor is on homepage
   if (newPath === '/' && isVendor()) {
     router.push('/vendor/dashboard')
     return
   }
 
-  // If user is on vendor page but not authenticated, redirect to login
+  // If user is on vendor page but not authenticated
   if (newPath.startsWith('/vendor')) {
     const token = localStorage.getItem('token')
     if (!token) {
       router.push('/login')
       return
     }
-    // ✅ If user is on vendor page but not a vendor, redirect to home
     const user = JSON.parse(localStorage.getItem('user') || 'null')
-    if (user?.role !== 'vendor' && user?.role !== 'admin') {
+    if (user?.role !== 'vendor') {
+      router.push('/')
+    }
+  }
+
+  // If user is on admin page but not authenticated
+  if (newPath.startsWith('/admin')) {
+    const token = localStorage.getItem('token')
+    if (!token) {
+      router.push('/login')
+      return
+    }
+    const user = JSON.parse(localStorage.getItem('user') || 'null')
+    if (user?.role !== 'admin') {
       router.push('/')
     }
   }
 }, { immediate: true })
 
-// ✅ Check on mount
+// ===== LIFECYCLE =====
 onMounted(() => {
   redirectVendorFromHome()
+  redirectAdminFromHome()
 })
 </script>
 

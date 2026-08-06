@@ -46,7 +46,23 @@
                 <span class="item-name">{{ item.name || item.product?.name || 'Product' }}</span>
                 <span class="item-quantity">Qty: {{ item.quantity }}</span>
               </div>
-              <span class="item-price">${{ (item.price * item.quantity).toFixed(2) }}</span>
+              <div class="item-actions">
+                <span class="item-price">${{ (item.price * item.quantity).toFixed(2) }}</span>
+                
+                <!-- ✅ WRITE REVIEW BUTTON - Only for delivered orders -->
+                <button 
+                  v-if="order.status === 'delivered' && !hasReviewed(item.product_id)"
+                  class="btn-review" 
+                  @click="openReviewModal(order, item)"
+                >
+                  <i class="bi bi-star"></i> Write Review
+                </button>
+                
+                <!-- ✅ Already Reviewed Badge -->
+                <span v-else-if="order.status === 'delivered' && hasReviewed(item.product_id)" class="reviewed-badge">
+                  <i class="bi bi-check-circle-fill"></i> Reviewed
+                </span>
+              </div>
             </div>
           </div>
 
@@ -80,13 +96,24 @@
         </div>
       </div>
     </div>
+
+    <!-- Review Modal -->
+    <ReviewModal
+      v-if="showReviewModal"
+      :order="selectedOrder"
+      :product="selectedProduct"
+      @close="showReviewModal = false"
+      @submitted="onReviewSubmitted"
+    />
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import axios from 'axios'
 import { orderApi } from '@/services/api'
+import ReviewModal from '@/components/ReviewModal.vue'
 
 const router = useRouter()
 
@@ -94,6 +121,10 @@ const router = useRouter()
 const orders = ref([])
 const isLoading = ref(true)
 const error = ref(null)
+const showReviewModal = ref(false)
+const selectedOrder = ref(null)
+const selectedProduct = ref(null)
+const reviewedProducts = ref([])
 
 // ===== COMPUTED =====
 const sortedOrders = computed(() => {
@@ -107,28 +138,23 @@ const loadOrders = async () => {
   
   try {
     const token = localStorage.getItem('token')
-    console.log('🔑 Token:', token ? 'Exists' : 'Missing')
     
     if (!token) {
-      console.log('⚠️ No token found, using localStorage')
       loadFromLocalStorage()
       isLoading.value = false
       return
     }
     
-    console.log('📡 Fetching orders from API...')
     const response = await orderApi.getOrders()
-    console.log('📦 API Response:', response.data)
     
     if (response.data.success) {
       orders.value = response.data.data || []
-      console.log('✅ Orders loaded:', orders.value.length)
+      await loadReviewedProducts()
     } else {
-      console.log('⚠️ API returned error, using localStorage')
       loadFromLocalStorage()
     }
   } catch (err) {
-    console.error('❌ Error loading orders:', err)
+    console.error('Error loading orders:', err)
     error.value = 'Failed to load orders. Please try again.'
     loadFromLocalStorage()
   } finally {
@@ -140,11 +166,42 @@ const loadFromLocalStorage = () => {
   const savedOrders = localStorage.getItem('shopsphere_orders')
   if (savedOrders) {
     orders.value = JSON.parse(savedOrders)
-    console.log('📦 Orders from localStorage:', orders.value.length)
   } else {
     orders.value = []
-    console.log('📦 No orders in localStorage')
   }
+}
+
+const loadReviewedProducts = async () => {
+  try {
+    const token = localStorage.getItem('token')
+    const response = await axios.get('http://localhost:8000/api/user/reviews', {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/json'
+      }
+    })
+    if (response.data.success) {
+      reviewedProducts.value = response.data.data.map(r => r.product_id)
+    }
+  } catch (error) {
+    console.error('Error loading reviewed products:', error)
+  }
+}
+
+const hasReviewed = (productId) => {
+  return reviewedProducts.value.includes(productId)
+}
+
+const openReviewModal = (order, item) => {
+  selectedOrder.value = order
+  selectedProduct.value = item.product
+  showReviewModal.value = true
+}
+
+const onReviewSubmitted = () => {
+  showReviewModal.value = false
+  loadReviewedProducts()
+  alert('✅ Review submitted successfully!')
 }
 
 const cancelOrder = async (orderId) => {
@@ -162,7 +219,6 @@ const cancelOrder = async (orderId) => {
       }
     }
     
-    // Fallback to localStorage
     const order = orders.value.find(o => o.id === orderId)
     if (order) {
       order.status = 'cancelled'
@@ -411,6 +467,54 @@ onMounted(() => {
   color: var(--text-primary);
 }
 
+.item-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.btn-review {
+  padding: 4px 12px;
+  background: #667eea;
+  border: none;
+  border-radius: 4px;
+  color: white;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.btn-review:hover {
+  background: #5a67d8;
+  transform: translateY(-1px);
+}
+
+.btn-review i {
+  font-size: 12px;
+}
+
+.reviewed-badge {
+  padding: 4px 12px;
+  background: #d1fae5;
+  color: #059669;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.reviewed-badge i {
+  font-size: 12px;
+}
+
 .order-footer {
   display: flex;
   justify-content: space-between;
@@ -476,6 +580,20 @@ onMounted(() => {
   font-size: 1.05rem;
 }
 
+/* Dark Mode */
+html.dark .btn-review {
+  background: #667eea;
+}
+
+html.dark .btn-review:hover {
+  background: #5a67d8;
+}
+
+html.dark .reviewed-badge {
+  background: #1a3a2a;
+  color: #34d399;
+}
+
 @media (prefers-color-scheme: dark) {
   .status-pending {
     background: rgba(251, 191, 36, 0.2);
@@ -536,6 +654,15 @@ onMounted(() => {
     align-items: flex-start;
     gap: 8px;
   }
+  
+  .order-item {
+    flex-wrap: wrap;
+  }
+  
+  .item-actions {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
 }
 
 @media (max-width: 480px) {
@@ -546,6 +673,11 @@ onMounted(() => {
 
   .item-price {
     margin-left: auto;
+  }
+  
+  .item-actions {
+    width: 100%;
+    justify-content: flex-start;
   }
 }
 </style>

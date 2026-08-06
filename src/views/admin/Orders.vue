@@ -90,6 +90,8 @@ import { ref, reactive, onMounted } from 'vue'
 import axios from 'axios'
 import Pagination from '@/components/Pagination.vue'
 
+// ❌ NO ReviewModal import here - Admin doesn't need it
+
 const orders = ref([])
 const loading = ref(true)
 
@@ -136,6 +138,12 @@ const loadOrders = async () => {
 }
 
 const updateStatus = async (order) => {
+  if (!confirm(`Change order ${order.order_number} status to ${order.status}?`)) {
+    // Revert the select value
+    await loadOrders()
+    return
+  }
+  
   try {
     const token = localStorage.getItem('token')
     await axios.put(`http://localhost:8000/api/admin/orders/${order.id}/status`, {
@@ -147,9 +155,11 @@ const updateStatus = async (order) => {
       }
     })
     alert('✅ Order status updated!')
+    await loadOrders()
   } catch (error) {
     console.error('Error updating order:', error)
     alert('❌ Failed to update order status')
+    await loadOrders()
   }
 }
 
@@ -333,6 +343,73 @@ onMounted(() => {
   display: block;
   margin-bottom: 12px;
   color: #d1d5db;
+}
+
+/* Dark Mode */
+html.dark .admin-orders .page-header h1 {
+  color: #ffffff;
+}
+
+html.dark .admin-orders .text-muted {
+  color: #9ca3af;
+}
+
+html.dark .admin-orders .search-box {
+  background: #1a1932;
+  border-color: #2d2b4e;
+}
+
+html.dark .admin-orders .search-box input {
+  color: #e5e7eb;
+  background: transparent;
+}
+
+html.dark .admin-orders .filter-group select {
+  background: #1a1932;
+  border-color: #2d2b4e;
+  color: #e5e7eb;
+}
+
+html.dark .admin-orders .table-wrapper {
+  background: #1a1932;
+  border-color: #2d2b4e;
+}
+
+html.dark .admin-orders .data-table {
+  background: #1a1932;
+}
+
+html.dark .admin-orders .data-table th {
+  background: #0f0e17;
+  color: #9ca3af;
+  border-color: #2d2b4e;
+}
+
+html.dark .admin-orders .data-table td {
+  color: #e5e7eb;
+  border-color: #2d2b4e;
+}
+
+html.dark .admin-orders .data-table tr:hover {
+  background: #2d2b4e;
+}
+
+html.dark .admin-orders .status-select {
+  background: #1a1932;
+  border-color: #2d2b4e;
+  color: #e5e7eb;
+}
+
+html.dark .admin-orders .status-select option {
+  background: #1a1932;
+}
+
+html.dark .admin-orders .empty-state {
+  color: #9ca3af;
+}
+
+html.dark .admin-orders .empty-state i {
+  color: #4a4770;
 }
 
 @media (max-width: 768px) {

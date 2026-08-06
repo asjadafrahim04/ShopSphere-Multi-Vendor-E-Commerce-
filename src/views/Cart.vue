@@ -62,22 +62,60 @@
         <!-- Cart Summary -->
         <div class="cart-summary">
           <h3>Order Summary</h3>
+          
+          <!-- ✅ COUPON CODE SECTION -->
+          <div class="coupon-section">
+            <div class="coupon-input">
+              <input 
+                v-model="couponCode" 
+                placeholder="Enter coupon code" 
+                :disabled="couponApplied"
+                class="coupon-input-field"
+              />
+              <button 
+                @click="applyCoupon" 
+                :disabled="couponApplied || !couponCode || loading"
+                class="coupon-btn"
+              >
+                {{ couponApplied ? 'Applied ✓' : 'Apply' }}
+              </button>
+            </div>
+            <div v-if="couponMessage" class="coupon-message" :class="couponSuccess ? 'success' : 'error'">
+              {{ couponMessage }}
+            </div>
+            <div v-if="couponApplied" class="coupon-applied">
+              <span class="coupon-code-display">🎫 {{ couponCode.toUpperCase() }}</span>
+              <button @click="removeCoupon" class="remove-coupon-btn">✕</button>
+            </div>
+          </div>
+
           <div class="summary-row">
             <span>Subtotal</span>
             <span>${{ subtotal.toFixed(2) }}</span>
           </div>
+          
+          <!-- ✅ Show discount if applied -->
+          <div v-if="discount > 0" class="summary-row discount">
+            <span>Discount</span>
+            <span class="discount-amount">-${{ discount.toFixed(2) }}</span>
+          </div>
+
           <div class="summary-row">
             <span>Shipping</span>
             <span>{{ shipping > 0 ? '$' + shipping.toFixed(2) : 'Free' }}</span>
           </div>
           <div class="summary-row">
-            <span>Tax</span>
+            <span>Tax (8%)</span>
             <span>${{ tax.toFixed(2) }}</span>
           </div>
+          
+          <div class="summary-divider"></div>
+          
           <div class="summary-row total">
             <span>Total</span>
             <span>${{ total.toFixed(2) }}</span>
           </div>
+          
           <button class="btn-primary-modern checkout-btn" @click="goToCheckout" :disabled="loading">
             <i class="bi bi-credit-card me-2"></i>Proceed to Checkout
           </button>
@@ -99,12 +137,19 @@
         </div>
       </div>
     </div>
+
+    <!-- Toast Notification -->
+    <div v-if="toast.show" class="toast-notification" :class="toast.type">
+      <i :class="toast.icon"></i>
+      {{ toast.message }}
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import axios from 'axios'
 import { cartApi } from '@/services/api'
 
 const router = useRouter()
@@ -113,6 +158,21 @@ const router = useRouter()
 const cartItems = ref([])
 const loading = ref(true)
 const error = ref(null)
+
+// ===== COUPON STATE =====
+const couponCode = ref('')
+const couponApplied = ref(false)
+const couponMessage = ref('')
+const couponSuccess = ref(false)
+const discount = ref(0)
+
+// ===== TOAST STATE =====
+const toast = ref({
+  show: false,
+  message: '',
+  type: 'success',
+  icon: 'bi bi-check-circle-fill'
+})
 
 // ===== COMPUTED =====
 const subtotal = computed(() => {
@@ -124,19 +184,69 @@ const shipping = computed(() => {
 })
 
 const tax = computed(() => {
-  return subtotal.value * 0.08
+  return (subtotal.value - discount.value) * 0.08
 })
 
 const total = computed(() => {
-  return subtotal.value + shipping.value + tax.value
+  return (subtotal.value - discount.value) + shipping.value + tax.value
 })
 
-// ===== METHODS =====
+// ===== TOAST METHODS =====
+const showToast = (message, type = 'success', icon = 'bi bi-check-circle-fill') => {
+  toast.value = { show: true, message, type, icon }
+  setTimeout(() => { toast.value.show = false }, 3000)
+}
+
+// ===== COUPON METHODS =====
+const applyCoupon = async () => {
+  if (!couponCode.value) return
+  
+  try {
+    const token = localStorage.getItem('token')
+    
+    // Validate coupon
+    const response = await axios.post('http://localhost:8000/api/coupons/validate', {
+      code: couponCode.value,
+      subtotal: subtotal.value
+    }, {
+      headers: {
+        'Authorization': token ? `Bearer ${token}` : '',
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+      }
+    })
+    
+    if (response.data.success) {
+      const data = response.data.data
+      couponApplied.value = true
+      couponSuccess.value = true
+      discount.value = data.discount_amount
+      couponMessage.value = `✅ Coupon applied! You saved $${data.discount_amount.toFixed(2)}`
+      showToast(`Coupon applied! You saved $${data.discount_amount.toFixed(2)}`, 'success', 'bi bi-tag-fill')
+    }
+  } catch (error) {
+    couponSuccess.value = false
+    couponMessage.value = error.response?.data?.message || 'Invalid coupon code'
+    discount.value = 0
+    showToast(couponMessage.value, 'error', 'bi bi-exclamation-circle-fill')
+  }
+}
+
+const removeCoupon = () => {
+  couponApplied.value = false
+  couponCode.value = ''
+  couponMessage.value = ''
+  discount.value = 0
+  showToast('Coupon removed', 'info', 'bi bi-info-circle')
+}
+
+// ===== CART METHODS =====
 const loadCart = async () => {
   loading.value = true
   error.value = null
   
   try {
+    const token = localStorage.getItem('token')
     const response = await cartApi.getCart()
     
     if (response.data.success) {
@@ -152,6 +262,11 @@ const loadCart = async () => {
         total: item.total
       }))
       
+      // Reset coupon if cart changed
+      if (couponApplied.value) {
+        removeCoupon()
+      }
+      
       // Update cart count in navbar
       window.dispatchEvent(new CustomEvent('cart-updated', { 
         detail: { count: cartData.count } 
@@ -161,24 +276,10 @@ const loadCart = async () => {
     console.error('Error loading cart:', err)
     error.value = 'Failed to load cart. Please try again.'
     if (err.response?.status === 401) {
-      // Unauthorized - redirect to login
       router.push('/login')
     }
   } finally {
     loading.value = false
-  }
-}
-
-const addToCart = async (productId, quantity = 1) => {
-  try {
-    const response = await cartApi.addToCart(productId, quantity)
-    if (response.data.success) {
-      await loadCart() // Reload cart
-      window.dispatchEvent(new CustomEvent('cart-updated'))
-    }
-  } catch (err) {
-    console.error('Error adding to cart:', err)
-    alert(err.response?.data?.message || 'Failed to add item to cart')
   }
 }
 
@@ -192,6 +293,10 @@ const updateQuantity = async (itemId, change) => {
   try {
     const response = await cartApi.updateCartItem(itemId, newQuantity)
     if (response.data.success) {
+      // Remove coupon if applied
+      if (couponApplied.value) {
+        removeCoupon()
+      }
       await loadCart()
       window.dispatchEvent(new CustomEvent('cart-updated'))
     }
@@ -207,27 +312,15 @@ const removeItem = async (itemId) => {
   try {
     const response = await cartApi.removeCartItem(itemId)
     if (response.data.success) {
+      if (couponApplied.value) {
+        removeCoupon()
+      }
       await loadCart()
       window.dispatchEvent(new CustomEvent('cart-updated'))
     }
   } catch (err) {
     console.error('Error removing item:', err)
     alert('Failed to remove item from cart')
-  }
-}
-
-const clearCart = async () => {
-  if (!confirm('Clear all items from cart?')) return
-  
-  try {
-    const response = await cartApi.clearCart()
-    if (response.data.success) {
-      cartItems.value = []
-      window.dispatchEvent(new CustomEvent('cart-updated'))
-    }
-  } catch (err) {
-    console.error('Error clearing cart:', err)
-    alert('Failed to clear cart')
   }
 }
 
@@ -259,6 +352,12 @@ onMounted(() => {
   padding: 40px 0 80px;
   background: var(--bg-primary);
   min-height: 100vh;
+}
+
+.container-custom {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 20px;
 }
 
 .page-header {
@@ -464,11 +563,119 @@ onMounted(() => {
   border-bottom: 1px solid var(--border-color);
 }
 
+/* ===== COUPON SECTION ===== */
+.coupon-section {
+  background: #f9fafb;
+  padding: 16px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+
+.coupon-input {
+  display: flex;
+  gap: 8px;
+}
+
+.coupon-input-field {
+  flex: 1;
+  padding: 10px 14px;
+  border: 2px dashed #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+  outline: none;
+  transition: all 0.2s ease;
+  background: white;
+}
+
+.coupon-input-field:focus {
+  border-color: #667eea;
+}
+
+.coupon-input-field:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.coupon-btn {
+  padding: 10px 20px;
+  background: #667eea;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.coupon-btn:hover:not(:disabled) {
+  background: #5a67d8;
+}
+
+.coupon-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.coupon-message {
+  margin-top: 8px;
+  font-size: 14px;
+  padding: 8px 12px;
+  border-radius: 6px;
+}
+
+.coupon-message.success {
+  background: #d1fae5;
+  color: #059669;
+}
+
+.coupon-message.error {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.coupon-applied {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: #d1fae5;
+  border-radius: 6px;
+}
+
+.coupon-code-display {
+  font-weight: 600;
+  color: #059669;
+  text-transform: uppercase;
+}
+
+.remove-coupon-btn {
+  background: none;
+  border: none;
+  color: #dc2626;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 0 4px;
+}
+
+.remove-coupon-btn:hover {
+  color: #ef4444;
+}
+
 .summary-row {
   display: flex;
   justify-content: space-between;
   padding: 8px 0;
   color: var(--text-secondary);
+}
+
+.summary-row.discount {
+  color: #059669;
+}
+
+.discount-amount {
+  font-weight: 600;
 }
 
 .summary-row.total {
@@ -478,6 +685,11 @@ onMounted(() => {
   padding-top: 12px;
   border-top: 2px solid var(--border-color);
   margin-top: 8px;
+}
+
+.summary-divider {
+  border-top: 1px solid var(--border-color);
+  margin: 8px 0;
 }
 
 .checkout-btn {
@@ -518,6 +730,51 @@ onMounted(() => {
   font-size: 1.05rem;
 }
 
+/* ===== TOAST ===== */
+.toast-notification {
+  position: fixed;
+  bottom: 30px;
+  right: 30px;
+  padding: 16px 24px;
+  border-radius: var(--radius-sm);
+  color: white;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 9999;
+  animation: slideUp 0.3s ease;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+}
+
+.toast-notification.success {
+  background: #10b981;
+}
+
+.toast-notification.error {
+  background: #ef4444;
+}
+
+.toast-notification.info {
+  background: #3b82f6;
+}
+
+.toast-notification i {
+  font-size: 20px;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(100px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* Responsive */
 @media (max-width: 1024px) {
   .cart-content {
     grid-template-columns: 1fr;
@@ -559,6 +816,14 @@ onMounted(() => {
   .item-total {
     min-width: auto;
   }
+  
+  .coupon-input {
+    flex-direction: column;
+  }
+  
+  .coupon-btn {
+    width: 100%;
+  }
 }
 
 @media (max-width: 480px) {
@@ -593,6 +858,14 @@ onMounted(() => {
 
   .item-total {
     font-size: 1rem;
+  }
+  
+  .toast-notification {
+    bottom: 16px;
+    right: 16px;
+    left: 16px;
+    padding: 12px 16px;
+    font-size: 14px;
   }
 }
 </style>

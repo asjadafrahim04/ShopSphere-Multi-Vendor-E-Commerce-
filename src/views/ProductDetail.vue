@@ -182,6 +182,11 @@
         </div>
       </section>
 
+      <!-- Customer Reviews Section -->
+      <section class="reviews-section">
+        <CustomerReviews :product-id="productId" />
+      </section>
+
       <!-- Toast Notification -->
       <div v-if="toast.show" class="toast-notification" :class="toast.type">
         <i :class="toast.icon"></i>
@@ -195,6 +200,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import ProductCard from '../components/ProductCard.vue'
+import CustomerReviews from '../components/CustomerReviews.vue'
 import { cartApi, wishlistApi } from '@/services/api'
 
 const router = useRouter()
@@ -209,6 +215,7 @@ const currentImageIndex = ref(0)
 const isWishlisted = ref(false)
 const isAddingToCart = ref(false)
 const debugInfo = ref('')
+const productId = computed(() => route.params.id)
 
 // ===== TOAST =====
 const toast = ref({
@@ -235,7 +242,6 @@ const mainImage = computed(() => {
 const productFeatures = computed(() => {
   if (!product.value) return []
   
-  // Try to get features from attributes or specifications
   if (product.value.attributes) {
     if (typeof product.value.attributes === 'object') {
       return Object.values(product.value.attributes)
@@ -249,7 +255,6 @@ const productFeatures = computed(() => {
     }
   }
   
-  // Default features based on product name
   const defaultFeatures = [
     'High Quality Material',
     'Durable Construction',
@@ -262,16 +267,13 @@ const productFeatures = computed(() => {
 
 // ===== METHODS =====
 
-// Fetch product from API
 const fetchProduct = async () => {
   loading.value = true
   const productId = route.params.id
   
-  // Debug info
   console.log('🔍 Fetching product ID:', productId)
   console.log('🔍 URL:', `http://localhost:8000/api/products/${productId}`)
   
-  // Show debug info on page
   debugInfo.value = `Fetching product ID: ${productId}`
   
   try {
@@ -310,7 +312,6 @@ const fetchProduct = async () => {
   }
 }
 
-// Fetch related products
 const fetchRelatedProducts = async () => {
   if (!product.value) return
   
@@ -330,13 +331,11 @@ const fetchRelatedProducts = async () => {
   }
 }
 
-// Check wishlist status
 const checkWishlistStatus = async () => {
   if (!product.value) return
   
   const token = localStorage.getItem('token')
   if (!token) {
-    // Check localStorage
     const wishlist = JSON.parse(localStorage.getItem('shopsphere_wishlist') || '[]')
     isWishlisted.value = wishlist.some(item => item.id === product.value.id)
     return
@@ -349,13 +348,11 @@ const checkWishlistStatus = async () => {
     }
   } catch (error) {
     console.error('Error checking wishlist:', error)
-    // Fallback to localStorage
     const wishlist = JSON.parse(localStorage.getItem('shopsphere_wishlist') || '[]')
     isWishlisted.value = wishlist.some(item => item.id === product.value.id)
   }
 }
 
-// Get vendor name
 const getVendorName = () => {
   if (!product.value) return 'ShopSphere'
   
@@ -368,7 +365,6 @@ const getVendorName = () => {
   return 'ShopSphere'
 }
 
-// Format date
 const formatDate = (date) => {
   if (!date) return 'N/A'
   return new Date(date).toLocaleDateString('en-US', {
@@ -378,7 +374,6 @@ const formatDate = (date) => {
   })
 }
 
-// Image gallery
 const selectImage = (index) => {
   currentImageIndex.value = index
 }
@@ -391,7 +386,6 @@ const handleThumbnailError = (event) => {
   event.target.src = 'https://via.placeholder.com/100x100?text=No+Image'
 }
 
-// Navigation
 const goBack = () => {
   router.back()
 }
@@ -400,7 +394,6 @@ const goToProduct = (product) => {
   router.push(`/product/${product.id}`)
 }
 
-// Quantity
 const increaseQuantity = () => {
   if (quantity.value < (product.value?.stock_quantity || 0)) {
     quantity.value++
@@ -413,7 +406,6 @@ const decreaseQuantity = () => {
   }
 }
 
-// Add to cart
 const addToCart = async () => {
   if (isAddingToCart.value || !product.value || product.value.stock_quantity <= 0) return
   
@@ -431,7 +423,6 @@ const addToCart = async () => {
         await updateCartCount()
       }
     } else {
-      // Guest cart
       let cart = JSON.parse(localStorage.getItem('shopsphere_cart') || '[]')
       const existingItem = cart.find(item => item.id === productId)
       
@@ -457,7 +448,6 @@ const addToCart = async () => {
   }
 }
 
-// Update cart count
 const updateCartCount = async () => {
   try {
     const token = localStorage.getItem('token')
@@ -479,7 +469,6 @@ const updateCartCount = async () => {
   }
 }
 
-// Toggle wishlist
 const toggleWishlist = async () => {
   if (!product.value) return
   
@@ -502,7 +491,6 @@ const toggleWishlist = async () => {
       showToast('Added to wishlist!', 'success', 'bi bi-heart-fill')
     }
     
-    // Update wishlist count
     const response = await wishlistApi.getWishlist()
     const count = response.data.data?.count || 0
     window.dispatchEvent(new CustomEvent('wishlist-updated', { 
@@ -514,7 +502,6 @@ const toggleWishlist = async () => {
   }
 }
 
-// Share functions
 const shareProduct = (platform) => {
   const url = window.location.href
   const text = `Check out ${product.value?.name} on ShopSphere!`
@@ -533,7 +520,6 @@ const copyProductLink = () => {
   showToast('Link copied to clipboard!', 'success', 'bi bi-check-circle-fill')
 }
 
-// Toast notification
 const showToast = (message, type = 'success', icon = 'bi bi-check-circle-fill') => {
   toast.value = {
     show: true,
@@ -547,7 +533,6 @@ const showToast = (message, type = 'success', icon = 'bi bi-check-circle-fill') 
   }, 3000)
 }
 
-// Event handlers for ProductCard
 const handleAddToCart = (product) => {
   console.log('Add to cart from related:', product)
 }
@@ -562,7 +547,6 @@ onMounted(() => {
   fetchProduct()
 })
 
-// Watch route changes
 watch(() => route.params.id, (newId, oldId) => {
   console.log('🔄 Route changed from', oldId, 'to', newId)
   fetchProduct()
@@ -1031,6 +1015,13 @@ watch(() => route.params.id, (newId, oldId) => {
   gap: 24px;
 }
 
+/* ===== REVIEWS SECTION ===== */
+.reviews-section {
+  margin-top: 60px;
+  padding-top: 40px;
+  border-top: 1px solid var(--border-color);
+}
+
 /* ===== TOAST ===== */
 .toast-notification {
   position: fixed;
@@ -1073,6 +1064,266 @@ watch(() => route.params.id, (newId, oldId) => {
     transform: translateY(0);
     opacity: 1;
   }
+}
+
+/* ===== DARK MODE ===== */
+html.dark .product-detail-page {
+  background: #0f0e17;
+}
+
+html.dark .product-detail-grid {
+  background: #1a1932;
+  border-color: #2d2b4e;
+}
+
+html.dark .product-name {
+  color: #ffffff;
+}
+
+html.dark .product-vendor {
+  color: #818cf8;
+}
+
+html.dark .product-price {
+  border-color: #2d2b4e;
+}
+
+html.dark .current-price {
+  color: #818cf8;
+}
+
+html.dark .original-price {
+  color: #9ca3af;
+}
+
+html.dark .stock-status.in-stock {
+  color: #34d399;
+}
+
+html.dark .stock-status.out-of-stock {
+  color: #f87171;
+}
+
+html.dark .product-description h4,
+html.dark .product-features h4 {
+  color: #ffffff;
+}
+
+html.dark .product-description p {
+  color: #e5e7eb;
+}
+
+html.dark .product-features ul li {
+  color: #e5e7eb;
+}
+
+html.dark .product-meta {
+  border-color: #2d2b4e;
+}
+
+html.dark .meta-item {
+  color: #9ca3af;
+}
+
+html.dark .meta-item strong {
+  color: #e5e7eb;
+}
+
+html.dark .share-section {
+  border-color: #2d2b4e;
+}
+
+html.dark .share-btn {
+  border-color: #2d2b4e;
+  color: #9ca3af;
+}
+
+html.dark .share-btn:hover {
+  background: #667eea;
+  color: white;
+}
+
+html.dark .back-btn {
+  color: #9ca3af;
+}
+
+html.dark .back-btn:hover {
+  color: #ffffff;
+}
+
+html.dark .empty-state h3 {
+  color: #ffffff;
+}
+
+html.dark .empty-state p {
+  color: #9ca3af;
+}
+
+html.dark .debug-info {
+  background: #3a1a1a;
+  color: #f87171;
+}
+
+html.dark .loading-state p {
+  color: #9ca3af;
+}
+
+html.dark .related-products {
+  border-color: #2d2b4e;
+}
+
+html.dark .related-products .section-title {
+  color: #ffffff;
+}
+
+html.dark .add-to-cart-section {
+  border-color: #2d2b4e;
+}
+
+html.dark .quantity-selector {
+  border-color: #2d2b4e;
+}
+
+html.dark .quantity-selector button {
+  background: #0f0e17;
+  color: #e5e7eb;
+}
+
+html.dark .quantity-selector span {
+  color: #ffffff;
+}
+
+html.dark .wishlist-btn-large {
+  border-color: #2d2b4e;
+  color: #e5e7eb;
+}
+
+html.dark .wishlist-btn-large.wishlisted {
+  background: #ef4444;
+  border-color: #ef4444;
+  color: white;
+}
+
+html.dark .thumbnail {
+  border-color: #2d2b4e;
+  background: #0f0e17;
+}
+
+html.dark .main-image {
+  background: #0f0e17;
+  border-color: #2d2b4e;
+}
+
+html.dark .reviews-section {
+  border-color: #2d2b4e;
+}
+
+html.dark .customer-reviews h3 {
+  color: #ffffff;
+}
+
+html.dark .rating-summary {
+  background: #1a1932;
+}
+
+html.dark .review-item {
+  border-color: #2d2b4e;
+  background: #1a1932;
+}
+
+html.dark .reviewer-name {
+  color: #ffffff;
+}
+
+html.dark .review-comment {
+  color: #e5e7eb;
+}
+
+html.dark .review-date {
+  color: #9ca3af;
+}
+
+html.dark .verified-badge {
+  background: #1a3a2a;
+  color: #34d399;
+}
+
+html.dark .write-review {
+  background: #1a1932;
+}
+
+html.dark .write-review h4 {
+  color: #ffffff;
+}
+
+html.dark .form-group label {
+  color: #e5e7eb;
+}
+
+html.dark .review-textarea {
+  background: #0f0e17;
+  border-color: #2d2b4e;
+  color: #e5e7eb;
+}
+
+html.dark .review-textarea:focus {
+  border-color: #667eea;
+}
+
+html.dark .already-reviewed {
+  background: #1a3a2a;
+  border-color: #2d4a3a;
+}
+
+html.dark .already-reviewed p {
+  color: #6ee7b7;
+}
+
+html.dark .login-to-review {
+  background: #1a1932;
+}
+
+html.dark .login-to-review p {
+  color: #9ca3af;
+}
+
+html.dark .empty-reviews {
+  color: #9ca3af;
+}
+
+html.dark .empty-reviews i {
+  color: #4a4770;
+}
+
+html.dark .review-stars .bi-star {
+  color: #2d2b4e;
+}
+
+html.dark .rating-bar {
+  background: #2d2b4e;
+}
+
+html.dark .rating-label {
+  color: #9ca3af;
+}
+
+html.dark .rating-count {
+  color: #9ca3af;
+}
+
+html.dark .reviews-pagination button {
+  background: #1a1932;
+  border-color: #2d2b4e;
+  color: #e5e7eb;
+}
+
+html.dark .reviews-pagination button:hover:not(:disabled) {
+  background: #667eea;
+  color: white;
+}
+
+html.dark .reviews-pagination span {
+  color: #9ca3af;
 }
 
 /* ===== RESPONSIVE ===== */
@@ -1138,6 +1389,11 @@ watch(() => route.params.id, (newId, oldId) => {
     padding: 12px 16px;
     font-size: 14px;
   }
+  
+  .reviews-section {
+    margin-top: 40px;
+    padding-top: 30px;
+  }
 }
 
 @media (max-width: 480px) {
@@ -1173,6 +1429,11 @@ watch(() => route.params.id, (newId, oldId) => {
   
   .product-detail-grid {
     padding: 12px;
+  }
+  
+  .reviews-section {
+    margin-top: 30px;
+    padding-top: 20px;
   }
 }
 </style>
